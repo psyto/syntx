@@ -105,7 +105,13 @@ async function tick(connection: Connection, config: Config, manager: Keypair): P
     await sendAndConfirmTransaction(connection, tx, [manager]);
     console.log(`  [oracle] $${price / 1_000_000} pushed`);
   } catch (err: any) {
-    console.log(`  [oracle] Push failed: ${err?.message?.slice(0, 80) || "unknown"}`);
+    const logs = err?.transactionLogs || err?.logs || [];
+    if (logs.length) {
+      console.log(`  [oracle] Push failed:`);
+      for (const log of logs) console.log(`    ${log}`);
+    } else {
+      console.log(`  [oracle] Push failed: ${err?.message?.slice(0, 150) || "unknown"}`);
+    }
   }
 
   // 3. Crank funding
@@ -128,7 +134,13 @@ async function tick(connection: Connection, config: Config, manager: Keypair): P
     await sendAndConfirmTransaction(connection, tx, [manager]);
     console.log(`  [crank] OK`);
   } catch (err: any) {
-    console.log(`  [crank] Failed: ${err?.message?.slice(0, 80) || "unknown"}`);
+    const logs = err?.transactionLogs || err?.logs || [];
+    if (logs.length) {
+      console.log(`  [crank] Failed:`);
+      for (const log of logs) console.log(`    ${log}`);
+    } else {
+      console.log(`  [crank] Failed: ${err?.message?.slice(0, 150) || "unknown"}`);
+    }
   }
 
   // 4. Strategy decision
