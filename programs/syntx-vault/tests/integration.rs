@@ -1543,3 +1543,164 @@ fn test_deposit_zero_rejected() {
     assert!(result.is_err(), "Zero deposit should be rejected");
     println!("test_deposit_zero_rejected passed");
 }
+
+#[test]
+fn test_update_manager_rejected_by_non_manager() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, _, _, _, _) = setup_vault_with_deposit(&mut env);
+
+    let attacker = Keypair::new();
+    env.svm.airdrop(&attacker.pubkey(), 10_000_000_000).unwrap();
+
+    let mut data = disc("update_manager");
+    data.extend_from_slice(attacker.pubkey().as_ref());
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(attacker.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&attacker.pubkey()), &[&attacker], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    assert!(result.is_err(), "Non-manager should not update manager");
+    println!("test_update_manager_rejected_by_non_manager passed");
+}
+
+#[test]
+fn test_collect_fees_rejected_by_non_manager() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, _, share_mint, _, _) = setup_vault_with_deposit(&mut env);
+
+    let attacker = Keypair::new();
+    env.svm.airdrop(&attacker.pubkey(), 10_000_000_000).unwrap();
+
+    let attacker_shares = Pubkey::new_unique();
+    env.svm.set_account(attacker_shares, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&share_mint, &attacker.pubkey(), 0),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(attacker.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new(share_mint, false),
+            AccountMeta::new(attacker_shares, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+        ],
+        data: encode_syntx_collect_fees(100_000_000),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&attacker.pubkey()), &[&attacker], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    assert!(result.is_err(), "Non-manager should not collect fees");
+    println!("test_collect_fees_rejected_by_non_manager passed");
+}
+
+#[test]
+fn test_double_init_vault_rejected() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let manager = &env.payer;
+    let (vault_pda, _) = env.vault_pda(&manager.pubkey());
+
+    let share_mint = Pubkey::new_unique();
+    env.svm.set_account(share_mint, Account {
+        lamports: 1_000_000,
+        data: make_mint_data_with_authority(&vault_pda),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+
+    // First init succeeds
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new_readonly(env.collateral_mint, false),
+            AccountMeta::new_readonly(share_mint, false),
+            AccountMeta::new_readonly(env.slab, false),
+            AccountMeta::new_readonly(env.perc_id, false),
+            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+        ],
+        data: encode_syntx_init_vault(2000, 200, 0),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix.clone()], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).unwrap();
+
+    // Second init fails (PDA already exists)
+    let tx2 = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx2);
+    assert!(result.is_err(), "Double init should be rejected");
+    println!("test_double_init_vault_rejected passed");
+}
+
+#[test]
+fn test_multiple_deposits_and_share_price() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, vault_collateral, share_mint, user1_shares, _user1) = setup_vault_with_deposit(&mut env);
+    // user1 deposited 100_000_000, got 100_000_000 shares
+
+    // user2 deposits same amount — should get same shares (price=1.0)
+    let user2 = Keypair::new();
+    env.svm.airdrop(&user2.pubkey(), 10_000_000_000).unwrap();
+    let user2_col = Pubkey::new_unique();
+    env.svm.set_account(user2_col, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &user2.pubkey(), 100_000_000),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+    let user2_shares = Pubkey::new_unique();
+    env.svm.set_account(user2_shares, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&share_mint, &user2.pubkey(), 0),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(user2.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new(user2_col, false),
+            AccountMeta::new(user2_shares, false),
+            AccountMeta::new(vault_collateral, false),
+            AccountMeta::new(share_mint, false),
+            AccountMeta::new(env.slab, false),
+            AccountMeta::new(env.perc_vault, false),
+            AccountMeta::new_readonly(env.perc_id, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
+        ],
+        data: encode_syntx_deposit(100_000_000),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&user2.pubkey()), &[&user2], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).unwrap();
+
+    // Verify user2 got same shares as user1 (share price = 1.0)
+    let u2_acct = env.svm.get_account(&user2_shares).unwrap();
+    let u2_state = TokenAccount::unpack(&u2_acct.data).unwrap();
+    assert_eq!(u2_state.amount, 100_000_000, "Second depositor should get equal shares at price 1.0");
+
+    // Verify total shares = 200M
+    let u1_acct = env.svm.get_account(&user1_shares).unwrap();
+    let u1_state = TokenAccount::unpack(&u1_acct.data).unwrap();
+    assert_eq!(u1_state.amount + u2_state.amount, 200_000_000, "Total shares should be 200M");
+    println!("test_multiple_deposits_and_share_price passed");
+}

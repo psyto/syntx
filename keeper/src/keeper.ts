@@ -85,34 +85,9 @@ async function tick(connection: Connection, config: Config, manager: Keypair): P
   console.log(`  Market: funding=${fundingRate} bps/slot | accounts=${engine.numUsedAccounts} | insurance=${engine.insuranceBalance}`);
   console.log(`  Share price: $${sharePrice.toFixed(6)}`);
 
-  // 2. Push oracle price
+  // 2. Push oracle price (with retry)
   const price = 138_000_000; // $138 — in production, fetch from Pyth
-  const now = Math.floor(Date.now() / 1000);
-  const pushPriceData = Buffer.alloc(17);
-  pushPriceData.writeUInt8(PERC_PUSH_ORACLE_PRICE, 0);
-  pushPriceData.writeBigUInt64LE(BigInt(price), 1);
-  pushPriceData.writeBigInt64LE(BigInt(now), 9);
-
-  try {
-    const tx = new Transaction().add(new TransactionInstruction({
-      programId: config.percolatorProgramId,
-      keys: [
-        { pubkey: manager.publicKey, isSigner: true, isWritable: false },
-        { pubkey: config.percolatorSlab, isSigner: false, isWritable: true },
-      ],
-      data: pushPriceData,
-    }));
-    await sendAndConfirmTransaction(connection, tx, [manager]);
-    console.log(`  [oracle] $${price / 1_000_000} pushed`);
-  } catch (err: any) {
-    const logs = err?.transactionLogs || err?.logs || [];
-    if (logs.length) {
-      console.log(`  [oracle] Push failed:`);
-      for (const log of logs) console.log(`    ${log}`);
-    } else {
-      console.log(`  [oracle] Push failed: ${err?.message?.slice(0, 150) || "unknown"}`);
-    }
-  }
+  await pushOracleWithRetry(connection, config, manager, price, 3);
 
   // 3. Crank funding
   const crankData = Buffer.alloc(4);
@@ -209,5 +184,43 @@ async function executeTrade(
   } catch (err: any) {
     const logs = err?.transactionLogs || [];
     console.log(`  [trade] Failed: ${logs[logs.length - 2] || err?.message?.slice(0, 100) || "unknown"}`);
+  }
+}
+
+async function pushOracleWithRetry(
+  connection: Connection,
+  config: Config,
+  manager: Keypair,
+  price: number,
+  maxRetries: number,
+): Promise<void> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const data = Buffer.alloc(17);
+      data.writeUInt8(PERC_PUSH_ORACLE_PRICE, 0);
+      data.writeBigUInt64LE(BigInt(price), 1);
+      data.writeBigInt64LE(BigInt(now), 9);
+
+      const tx = new Transaction().add(new TransactionInstruction({
+        programId: config.percolatorProgramId,
+        keys: [
+          { pubkey: manager.publicKey, isSigner: true, isWritable: false },
+          { pubkey: config.percolatorSlab, isSigner: false, isWritable: true },
+        ],
+        data,
+      }));
+      await sendAndConfirmTransaction(connection, tx, [manager]);
+      console.log(`  [oracle] $${price / 1_000_000} pushed`);
+      return;
+    } catch (err: any) {
+      if (attempt < maxRetries) {
+        const delay = attempt * 2000; // 2s, 4s, 6s backoff
+        console.log(`  [oracle] Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms...`);
+        await sleep(delay);
+      } else {
+        console.log(`  [oracle] All ${maxRetries} attempts failed: ${err?.message?.slice(0, 80) || "unknown"}`);
+      }
+    }
   }
 }
