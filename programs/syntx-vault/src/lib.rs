@@ -483,6 +483,113 @@ pub mod syntx_vault {
         Ok(())
     }
 
+    /// Collect performance + management fees. Fees are paid via share dilution
+    /// (minting new shares to the manager).
+    ///
+    /// Performance fee: % of profits above high-water mark.
+    /// Management fee: % of AUM, pro-rated by time elapsed.
+    pub fn collect_fees(ctx: Context<CollectFees>, vault_equity: u64) -> Result<()> {
+        let vault = &ctx.accounts.vault_state;
+        require!(vault.initialized, SyntxError::NotInitialized);
+        require!(vault.total_shares > 0, SyntxError::ZeroShares);
+        require!(vault_equity > 0, SyntxError::ZeroAmount);
+
+        let now = Clock::get()?.unix_timestamp;
+        let mut fee_shares: u64 = 0;
+
+        // --- Performance fee ---
+        // Only charged on profits above the high-water mark
+        if vault_equity > vault.high_water_mark && vault.high_water_mark > 0 {
+            let profit = vault_equity - vault.high_water_mark;
+            let perf_fee_value = (profit as u128)
+                .checked_mul(vault.performance_fee_bps as u128)
+                .unwrap()
+                .checked_div(10_000)
+                .unwrap() as u64;
+
+            if perf_fee_value > 0 && vault_equity > perf_fee_value {
+                // shares_for_fee = fee_value * total_shares / (equity - fee_value)
+                let perf_shares = (perf_fee_value as u128)
+                    .checked_mul(vault.total_shares as u128)
+                    .unwrap()
+                    .checked_div((vault_equity - perf_fee_value) as u128)
+                    .unwrap() as u64;
+                fee_shares = fee_shares.checked_add(perf_shares).unwrap();
+            }
+        }
+
+        // --- Management fee ---
+        // Annual fee pro-rated by seconds elapsed
+        let elapsed_secs = now.saturating_sub(vault.last_fee_collection).max(0) as u64;
+        if elapsed_secs > 0 && vault.management_fee_bps > 0 {
+            let seconds_per_year: u64 = 365 * 24 * 3600;
+            // mgmt_fee_value = equity * mgmt_bps / 10000 * elapsed / year
+            let mgmt_fee_value = (vault_equity as u128)
+                .checked_mul(vault.management_fee_bps as u128)
+                .unwrap()
+                .checked_mul(elapsed_secs as u128)
+                .unwrap()
+                .checked_div(10_000u128 * seconds_per_year as u128)
+                .unwrap() as u64;
+
+            if mgmt_fee_value > 0 && vault_equity > mgmt_fee_value {
+                let mgmt_shares = (mgmt_fee_value as u128)
+                    .checked_mul(vault.total_shares as u128)
+                    .unwrap()
+                    .checked_div((vault_equity - mgmt_fee_value) as u128)
+                    .unwrap() as u64;
+                fee_shares = fee_shares.checked_add(mgmt_shares).unwrap();
+            }
+        }
+
+        if fee_shares == 0 {
+            msg!("No fees to collect");
+            return Ok(());
+        }
+
+        // Mint fee shares to manager
+        let mint_seeds: &[&[u8]] = &[
+            b"vault",
+            vault.collateral_mint.as_ref(),
+            vault.manager.as_ref(),
+            &[vault.bump],
+        ];
+
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.share_mint.to_account_info(),
+                    to: ctx.accounts.manager_shares.to_account_info(),
+                    authority: ctx.accounts.vault_state.to_account_info(),
+                },
+                &[mint_seeds],
+            ),
+            fee_shares,
+        )?;
+
+        // Update state
+        let vault = &mut ctx.accounts.vault_state;
+        vault.total_shares = vault.total_shares.checked_add(fee_shares).unwrap();
+        if vault_equity > vault.high_water_mark {
+            vault.high_water_mark = vault_equity;
+        }
+        vault.last_fee_collection = now;
+
+        msg!("Collected fees: {} shares minted to manager", fee_shares);
+        Ok(())
+    }
+
+    /// Transfer vault management to a new keeper address.
+    pub fn update_manager(ctx: Context<UpdateManager>, new_manager: Pubkey) -> Result<()> {
+        require!(new_manager != Pubkey::default(), SyntxError::ZeroAmount);
+        let vault = &mut ctx.accounts.vault_state;
+        let old = vault.manager;
+        vault.manager = new_manager;
+        msg!("Manager updated: {} → {}", old, new_manager);
+        Ok(())
+    }
+
     /// Pause or unpause the vault.
     pub fn set_paused(ctx: Context<ManagerOnly>, paused: bool) -> Result<()> {
         ctx.accounts.vault_state.paused = paused;
@@ -725,6 +832,42 @@ pub struct ManagerCrank<'info> {
     pub percolator_program: AccountInfo<'info>,
 
     pub clock: Sysvar<'info, Clock>,
+}
+
+#[derive(Accounts)]
+pub struct CollectFees<'info> {
+    #[account(constraint = manager.key() == vault_state.manager @ SyntxError::Unauthorized)]
+    pub manager: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", vault_state.collateral_mint.as_ref(), vault_state.manager.as_ref()],
+        bump = vault_state.bump,
+    )]
+    pub vault_state: Box<Account<'info, VaultState>>,
+
+    /// Share mint (for minting fee shares)
+    #[account(mut, address = vault_state.share_mint)]
+    pub share_mint: Box<Account<'info, Mint>>,
+
+    /// Manager's share token account (fee destination)
+    #[account(mut, token::mint = vault_state.share_mint)]
+    pub manager_shares: Box<Account<'info, TokenAccount>>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateManager<'info> {
+    #[account(constraint = manager.key() == vault_state.manager @ SyntxError::Unauthorized)]
+    pub manager: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", vault_state.collateral_mint.as_ref(), vault_state.manager.as_ref()],
+        bump = vault_state.bump,
+    )]
+    pub vault_state: Box<Account<'info, VaultState>>,
 }
 
 #[derive(Accounts)]

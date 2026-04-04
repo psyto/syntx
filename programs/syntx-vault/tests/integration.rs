@@ -444,6 +444,12 @@ fn encode_syntx_deposit(amount: u64) -> Vec<u8> {
     data
 }
 
+fn encode_syntx_collect_fees(vault_equity: u64) -> Vec<u8> {
+    let mut data = disc("collect_fees");
+    data.extend_from_slice(&vault_equity.to_le_bytes());
+    data
+}
+
 fn encode_syntx_withdraw(shares_to_burn: u64) -> Vec<u8> {
     let mut data = disc("withdraw");
     data.extend_from_slice(&shares_to_burn.to_le_bytes());
@@ -867,4 +873,190 @@ fn test_syntx_full_lifecycle() {
     println!("  Trade: size={} via vault PDA", trade_size);
     println!("  Withdraw: {} shares → {} USDC", withdraw_shares, expected_usdc);
     println!("  Remaining: {} shares", deposit_amount - withdraw_shares);
+}
+
+#[test]
+fn test_collect_fees() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+
+    let manager = &env.payer;
+    let manager_pubkey = manager.pubkey();
+    let (vault_pda, _) = env.vault_pda(&manager_pubkey);
+
+    // Create share mint
+    let share_mint = Pubkey::new_unique();
+    env.svm.set_account(share_mint, Account {
+        lamports: 1_000_000,
+        data: make_mint_data_with_authority(&vault_pda),
+        owner: spl_token::ID,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+
+    // InitVault
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager_pubkey, true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new_readonly(env.collateral_mint, false),
+            AccountMeta::new_readonly(share_mint, false),
+            AccountMeta::new_readonly(env.slab, false),
+            AccountMeta::new_readonly(env.perc_id, false),
+            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+        ],
+        data: encode_syntx_init_vault(2000, 200, 1_000_000_000),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager_pubkey), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("init_vault failed");
+
+    // Create vault collateral with registration fee
+    let vault_collateral = Pubkey::new_unique();
+    env.svm.set_account(vault_collateral, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &vault_pda, 1000),
+        owner: spl_token::ID,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+
+    // Register on Percolator
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager_pubkey, true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new(vault_collateral, false),
+            AccountMeta::new(env.slab, false),
+            AccountMeta::new(env.perc_vault, false),
+            AccountMeta::new_readonly(env.perc_id, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
+        ],
+        data: encode_syntx_register(1000),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager_pubkey), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("register failed");
+
+    // Set idx
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager_pubkey, true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data: encode_syntx_set_idx(0),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager_pubkey), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("set_idx failed");
+
+    // User deposits 100 USDC
+    let user = Keypair::new();
+    env.svm.airdrop(&user.pubkey(), 10_000_000_000).unwrap();
+    let deposit_amount: u64 = 100_000_000;
+
+    let user_collateral = Pubkey::new_unique();
+    env.svm.set_account(user_collateral, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &user.pubkey(), deposit_amount),
+        owner: spl_token::ID,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+
+    let user_shares = Pubkey::new_unique();
+    env.svm.set_account(user_shares, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&share_mint, &user.pubkey(), 0),
+        owner: spl_token::ID,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(user.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new(user_collateral, false),
+            AccountMeta::new(user_shares, false),
+            AccountMeta::new(vault_collateral, false),
+            AccountMeta::new(share_mint, false),
+            AccountMeta::new(env.slab, false),
+            AccountMeta::new(env.perc_vault, false),
+            AccountMeta::new_readonly(env.perc_id, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
+        ],
+        data: encode_syntx_deposit(deposit_amount),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&user.pubkey()), &[&user], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("deposit failed");
+
+    // Advance clock by 30 days (for management fee accrual)
+    env.svm.set_sysvar(&Clock {
+        slot: 200,
+        unix_timestamp: 100 + (30 * 24 * 3600), // 30 days later
+        ..Clock::default()
+    });
+
+    // Create manager's share token account
+    let manager_shares = Pubkey::new_unique();
+    env.svm.set_account(manager_shares, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&share_mint, &manager_pubkey, 0),
+        owner: spl_token::ID,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+
+    // Collect fees — simulate vault_equity = 110 USDC (10% profit)
+    let vault_equity: u64 = 110_000_000;
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager_pubkey, true),    // manager
+            AccountMeta::new(vault_pda, false),        // vault_state
+            AccountMeta::new(share_mint, false),       // share_mint
+            AccountMeta::new(manager_shares, false),   // manager_shares
+            AccountMeta::new_readonly(spl_token::ID, false), // token_program
+        ],
+        data: encode_syntx_collect_fees(vault_equity),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager_pubkey), &[manager], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    match &result {
+        Ok(_) => println!("  Fee collection succeeded"),
+        Err(e) => {
+            for log in &e.meta.logs { println!("  LOG: {}", log); }
+        }
+    }
+    result.expect("collect_fees failed");
+
+    // Verify manager received fee shares
+    let mgr_shares_acct = env.svm.get_account(&manager_shares).unwrap();
+    let mgr_shares_state = TokenAccount::unpack(&mgr_shares_acct.data).unwrap();
+    assert!(mgr_shares_state.amount > 0, "Manager should have received fee shares");
+    println!("  Manager fee shares: {}", mgr_shares_state.amount);
+
+    // Verify user shares unchanged
+    let user_shares_acct = env.svm.get_account(&user_shares).unwrap();
+    let user_shares_state = TokenAccount::unpack(&user_shares_acct.data).unwrap();
+    assert_eq!(user_shares_state.amount, deposit_amount, "User shares unchanged");
+
+    println!("=== Fee collection test passed ===");
+    println!("  Vault equity: {} (10% profit)", vault_equity);
+    println!("  Manager earned: {} fee shares", mgr_shares_state.amount);
+    println!("  User retains: {} shares", user_shares_state.amount);
 }
