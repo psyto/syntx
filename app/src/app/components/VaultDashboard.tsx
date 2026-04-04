@@ -99,10 +99,15 @@ export default function VaultDashboard() {
         try {
           const ata = await getAssociatedTokenAddress(new PublicKey(data.shareMint), publicKey);
           const bal = await connection.getTokenAccountBalance(ata);
-          setUserShares(BigInt(bal.value.amount));
-        } catch { setUserShares(0n); }
+          const shares = BigInt(bal.value.amount);
+          setUserShares(shares);
+          console.log("User shares:", shares.toString(), "ATA:", ata.toBase58());
+        } catch (e) {
+          console.log("No share ATA for", publicKey.toBase58());
+          setUserShares(0n);
+        }
       }
-    } catch {} finally { setLoading(false); }
+    } catch (e) { console.error("Fetch error:", e); } finally { setLoading(false); }
   }, [connection, publicKey]);
 
   useEffect(() => {
@@ -226,6 +231,14 @@ export default function VaultDashboard() {
   return (
     <div className="space-y-6">
       {/* Stats Grid */}
+      <div className="flex justify-end mb-2">
+        <button
+          onClick={fetchData}
+          className="text-xs text-[var(--text-dim)] hover:text-white transition px-3 py-1 border border-[var(--border)] rounded-lg"
+        >
+          Refresh
+        </button>
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px] bg-[var(--border)] rounded-xl overflow-hidden">
         <Stat label="Share Price" value={`$${sharePrice.toFixed(6)}`} />
         <Stat label="TVL" value={`${(Number(vault.totalDeposits) / 1_000_000).toFixed(2)}`} />
