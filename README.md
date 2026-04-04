@@ -21,7 +21,7 @@ Think of it as a **composable hedge fund infrastructure** — Percolator is the 
 
 ## Why Composable Matters
 
-Percolator Launch creates single-asset perp markets. Syntx creates composable strategy vaults that interact with the entire Solana DeFi stack.
+Syntx creates composable strategy vaults that interact with the entire Solana DeFi stack — not isolated perp markets.
 
 | Purpose-built chains (Hyperliquid) | Syntx on Solana |
 |---|---|

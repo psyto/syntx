@@ -60,8 +60,8 @@ export default function Home() {
         <div className="max-w-[1100px] mx-auto px-6">
           <h2 className="text-2xl font-bold mb-3 text-center">Not just a perp DEX</h2>
           <p className="text-[var(--text-muted)] text-center mb-12 max-w-xl mx-auto">
-            Percolator Launch creates single-asset perp markets. Syntx creates composable strategy vaults
-            that interact with the entire Solana ecosystem.
+            Syntx creates composable strategy vaults that interact with the entire Solana ecosystem —
+            not isolated perp markets.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-[1px] bg-[var(--border)] rounded-xl overflow-hidden">
