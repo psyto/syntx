@@ -5,7 +5,7 @@ export { SyntxClient } from "./client";
 export type { VaultState, VaultHealth, VaultInfo } from "./types";
 
 // Account parsers
-export { fetchVaultState, parseVaultState } from "./accounts";
+export { fetchVaultState, fetchAllVaults, parseVaultState } from "./accounts";
 
 // Instruction builders
 export {

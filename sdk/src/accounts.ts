@@ -65,3 +65,29 @@ export async function fetchVaultState(
   if (!info) throw new Error(`Vault not found: ${vaultPda.toBase58()}`);
   return parseVaultState(Buffer.from(info.data));
 }
+
+/**
+ * Discover all Syntx vaults by scanning program accounts.
+ * Returns vault PDAs + parsed state.
+ */
+export async function fetchAllVaults(
+  connection: Connection,
+  programId: PublicKey,
+): Promise<{ pubkey: PublicKey; state: VaultState }[]> {
+  const accounts = await connection.getProgramAccounts(programId, {
+    filters: [
+      { memcmp: { offset: 0, bytes: VAULT_STATE_DISC.toString("base64") } },
+    ],
+  });
+
+  const vaults: { pubkey: PublicKey; state: VaultState }[] = [];
+  for (const { pubkey, account } of accounts) {
+    try {
+      const state = parseVaultState(Buffer.from(account.data));
+      vaults.push({ pubkey, state });
+    } catch {
+      // skip malformed accounts
+    }
+  }
+  return vaults;
+}
