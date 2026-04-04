@@ -106,10 +106,17 @@ fn make_mint_data_with_authority(authority: &Pubkey) -> Vec<u8> {
 
 fn make_pyth_data(feed_id: &[u8; 32], price: i64, expo: i32, conf: u64, publish_time: i64) -> Vec<u8> {
     let mut data = vec![0u8; 134];
+    // OFF_VERIFICATION_LEVEL = 40: must be 1 (Full) for production builds
+    data[40..42].copy_from_slice(&1u16.to_le_bytes());
+    // OFF_FEED_ID = 42
     data[42..74].copy_from_slice(feed_id);
+    // OFF_PRICE = 74
     data[74..82].copy_from_slice(&price.to_le_bytes());
+    // OFF_CONF = 82
     data[82..90].copy_from_slice(&conf.to_le_bytes());
+    // OFF_EXPO = 90
     data[90..94].copy_from_slice(&expo.to_le_bytes());
+    // OFF_PUBLISH_TIME = 94
     data[94..102].copy_from_slice(&publish_time.to_le_bytes());
     data
 }
@@ -805,14 +812,7 @@ fn test_syntx_full_lifecycle() {
             }
         }
     }
-    // Trade may fail due to oracle format changes in latest Percolator.
-    // The core flow (init → register → deposit) is verified.
-    // Trade + withdraw will be tested after oracle format is aligned.
-    if result.is_err() {
-        println!("  Trade skipped (oracle format mismatch with latest Percolator)");
-        println!("=== Lifecycle test passed (init → register → deposit) ===");
-        return;
-    }
+    result.expect("manager_trade failed");
 
     // --- Step 11: Withdraw half the shares ---
     let withdraw_shares: u64 = deposit_amount / 2; // 50 USDC worth
