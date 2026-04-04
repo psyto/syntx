@@ -6,7 +6,7 @@ Syntx is the composable perpetual futures layer Solana is missing. Built on Anat
 
 ## Current Status (April 4, 2026)
 
-**39 commits, fully operational on devnet.**
+**40 commits, fully operational on devnet.**
 
 | Phase | Status | What was built |
 |---|---|---|
