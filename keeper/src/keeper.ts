@@ -127,4 +127,57 @@ async function tick(connection: Connection, config: Config, manager: Keypair): P
     const logs = err?.transactionLogs || [];
     console.log(`  [crank] Failed: ${logs[logs.length - 2] || err?.message || "unknown"}`);
   }
+
+  // 4. Strategy: open a small position if flat
+  if (health.positionSize === 0n) {
+    // Capital=1000, price=138e6, initial_margin=10%
+    // Max notional = 1000 * 10000 / 1000 (IM bps) = 10000 units notional
+    // Max position = 10000 / 138 ≈ 72 units... use 1 unit to be safe
+    await executeTrade(connection, config, manager, 1, 1n);
+  } else {
+    console.log(`  [strategy] Position open: ${health.positionSize} — holding`);
+  }
+}
+
+async function executeTrade(
+  connection: Connection,
+  config: Config,
+  manager: Keypair,
+  lpIdx: number,
+  size: bigint,
+): Promise<void> {
+  // Encode Syntx manager_trade: disc(8) + lp_idx(2) + size(16) = 26 bytes
+  const tradeData = Buffer.alloc(26);
+  const d = Buffer.from(disc("manager_trade"));
+  d.copy(tradeData, 0);
+  tradeData.writeUInt16LE(lpIdx, 8);
+  // Write i128 size
+  const sizeUnsigned = size < 0n ? (1n << 128n) + size : size;
+  tradeData.writeBigUInt64LE(sizeUnsigned & 0xFFFFFFFFFFFFFFFFn, 10);
+  tradeData.writeBigUInt64LE(sizeUnsigned >> 64n, 18);
+
+  const tradeIx = new TransactionInstruction({
+    programId: config.syntxProgramId,
+    keys: [
+      { pubkey: manager.publicKey, isSigner: true, isWritable: false },   // manager
+      { pubkey: config.vaultPda, isSigner: false, isWritable: false },    // vault_state
+      { pubkey: manager.publicKey, isSigner: true, isWritable: false },   // lp_owner (same as manager)
+      { pubkey: config.percolatorSlab, isSigner: false, isWritable: true }, // percolator_slab
+      { pubkey: config.percolatorSlab, isSigner: false, isWritable: false }, // oracle (authority mode)
+      { pubkey: config.percolatorProgramId, isSigner: false, isWritable: false }, // percolator_program
+      { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false }, // clock
+    ],
+    data: tradeData,
+  });
+
+  try {
+    const tx = new Transaction().add(tradeIx);
+    const sig = await sendAndConfirmTransaction(connection, tx, [manager]);
+    console.log(`  [trade] OK: lp=${lpIdx} size=${size} tx=${sig.slice(0, 16)}...`);
+  } catch (err: any) {
+    const logs = err?.transactionLogs || [];
+    console.log(`  [trade] Failed:`);
+    for (const log of logs) console.log(`    ${log}`);
+    if (!logs.length) console.log(`    ${err?.message || "unknown"}`);
+  }
 }
