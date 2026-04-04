@@ -382,6 +382,22 @@ pub mod syntx_vault {
         require!(vault.initialized, SyntxError::NotInitialized);
         require!(!vault.paused, SyntxError::VaultPaused);
 
+        // Circuit breaker: check drawdown from peak equity
+        if vault.max_drawdown_bps > 0 && vault.peak_equity > 0 {
+            let current_equity = vault.total_deposits;
+            let drawdown_bps = if current_equity < vault.peak_equity {
+                ((vault.peak_equity - current_equity) as u128 * 10_000 / vault.peak_equity as u128) as u16
+            } else {
+                0
+            };
+            if drawdown_bps > vault.max_drawdown_bps {
+                msg!("CIRCUIT BREAKER: drawdown {}bps exceeds max {}bps — auto-pausing",
+                    drawdown_bps, vault.max_drawdown_bps);
+                // Can't mutate here (vault is immutable ref), but reject the trade
+                return Err(SyntxError::CircuitBreakerTriggered.into());
+            }
+        }
+
         let vault_seeds: &[&[u8]] = &[
             b"vault",
             vault.collateral_mint.as_ref(),
@@ -597,6 +613,30 @@ pub mod syntx_vault {
         Ok(())
     }
 
+    /// Configure circuit breaker parameters.
+    /// max_drawdown_bps: auto-reject trades when equity drops this much from peak (0 = disabled)
+    /// cpi_whitelist: only this pubkey can call cpi_trade (Pubkey::default() = any)
+    /// max_cpi_trade_size: max position size per CPI trade (0 = default 1M)
+    pub fn set_circuit_breaker(
+        ctx: Context<ManagerOnly>,
+        max_drawdown_bps: u16,
+        cpi_whitelist: Pubkey,
+        max_cpi_trade_size: u64,
+    ) -> Result<()> {
+        require!(max_drawdown_bps <= 10_000, SyntxError::FeeTooHigh); // max 100%
+        let vault = &mut ctx.accounts.vault_state;
+        vault.max_drawdown_bps = max_drawdown_bps;
+        vault.cpi_whitelist = cpi_whitelist;
+        vault.max_cpi_trade_size = max_cpi_trade_size;
+        // Set peak equity to current deposits if not already set
+        if vault.peak_equity == 0 && vault.total_deposits > 0 {
+            vault.peak_equity = vault.total_deposits;
+        }
+        msg!("Circuit breaker: drawdown={}bps, cpi_whitelist={}, max_cpi_size={}",
+            max_drawdown_bps, cpi_whitelist, max_cpi_trade_size);
+        Ok(())
+    }
+
     /// On-chain share price oracle. Returns vault equity data via program return_data.
     /// Other programs can CPI this to get the current share price.
     ///
@@ -639,13 +679,34 @@ pub mod syntx_vault {
         require!(vault.initialized, SyntxError::NotInitialized);
         require!(!vault.paused, SyntxError::VaultPaused);
 
-        // Size limit for CPI trades — prevent external protocols from taking huge positions
-        // Manager can set this via update_cpi_limit (not yet implemented)
-        let max_cpi_size: i128 = 1_000_000; // 1M units max per CPI trade
+        // CPI whitelist: if set, only the whitelisted program can call cpi_trade
+        if vault.cpi_whitelist != Pubkey::default() {
+            require!(
+                ctx.accounts.caller.key() == vault.cpi_whitelist,
+                SyntxError::CpiCallerNotWhitelisted
+            );
+        }
+
+        // Size limit: use vault's configured max, or default 1M
+        let max_cpi_size: i128 = if vault.max_cpi_trade_size > 0 {
+            vault.max_cpi_trade_size as i128
+        } else {
+            1_000_000
+        };
         require!(
             size.abs() <= max_cpi_size,
             SyntxError::CpiTradeTooLarge
         );
+
+        // Circuit breaker check (same as manager_trade)
+        if vault.max_drawdown_bps > 0 && vault.peak_equity > 0 {
+            let drawdown_bps = if vault.total_deposits < vault.peak_equity {
+                ((vault.peak_equity - vault.total_deposits) as u128 * 10_000 / vault.peak_equity as u128) as u16
+            } else { 0 };
+            if drawdown_bps > vault.max_drawdown_bps {
+                return Err(SyntxError::CircuitBreakerTriggered.into());
+            }
+        }
 
         let vault_seeds: &[&[u8]] = &[
             b"vault",
@@ -1052,6 +1113,16 @@ pub struct VaultState {
     pub deposit_cap: u64,
     pub paused: bool,
     pub initialized: bool,
+
+    // Circuit breakers (auto-triggered, no governance needed)
+    /// Maximum drawdown in basis points before auto-pause (e.g., 2000 = 20%)
+    pub max_drawdown_bps: u16,
+    /// Highest recorded equity (for drawdown calculation)
+    pub peak_equity: u64,
+    /// CPI trade whitelist — if non-zero, only this program can call cpi_trade
+    pub cpi_whitelist: Pubkey,
+    /// Maximum single trade size for cpi_trade (0 = use default 1M)
+    pub max_cpi_trade_size: u64,
 }
 
 // =============================================================================
@@ -1082,4 +1153,8 @@ pub enum SyntxError {
     InsufficientShares,
     #[msg("CPI trade size exceeds limit")]
     CpiTradeTooLarge,
+    #[msg("Circuit breaker triggered — drawdown exceeds max")]
+    CircuitBreakerTriggered,
+    #[msg("CPI caller not whitelisted")]
+    CpiCallerNotWhitelisted,
 }
