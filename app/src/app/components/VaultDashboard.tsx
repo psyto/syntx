@@ -9,12 +9,6 @@ import { getAssociatedTokenAddress } from "@solana/spl-token";
 const VAULT_PDA = new PublicKey("4pL2aQawAbc2XwjRE9ptrH4yxihn4BL2uVMavgZrtYUK");
 const SYNTX_PROGRAM_ID = new PublicKey("53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V");
 
-// Anchor discriminator
-function disc(name: string): Buffer {
-  const crypto = require("crypto");
-  return crypto.createHash("sha256").update(`account:${name}`).digest().subarray(0, 8);
-}
-
 interface VaultData {
   manager: string;
   collateralMint: string;
@@ -30,24 +24,38 @@ interface VaultData {
   initialized: boolean;
 }
 
-function parseVaultData(data: Buffer): VaultData {
+// Read helpers for Uint8Array (browser doesn't have Buffer.readBigUInt64LE)
+function readU8(d: Uint8Array, off: number): number {
+  return d[off];
+}
+function readU16LE(d: Uint8Array, off: number): number {
+  return d[off] | (d[off + 1] << 8);
+}
+function readU64LE(d: Uint8Array, off: number): bigint {
+  const lo = BigInt(d[off]) | (BigInt(d[off+1]) << 8n) | (BigInt(d[off+2]) << 16n) | (BigInt(d[off+3]) << 24n);
+  const hi = BigInt(d[off+4]) | (BigInt(d[off+5]) << 8n) | (BigInt(d[off+6]) << 16n) | (BigInt(d[off+7]) << 24n);
+  return lo | (hi << 32n);
+}
+
+function parseVaultData(raw: Uint8Array): VaultData {
+  const d = raw;
   let off = 8; // skip discriminator
-  const bump = data.readUInt8(off); off += 1;
-  const manager = new PublicKey(data.subarray(off, off + 32)).toBase58(); off += 32;
-  const collateralMint = new PublicKey(data.subarray(off, off + 32)).toBase58(); off += 32;
-  const shareMint = new PublicKey(data.subarray(off, off + 32)).toBase58(); off += 32;
+  off += 1; // bump
+  const manager = new PublicKey(d.slice(off, off + 32)).toBase58(); off += 32;
+  const collateralMint = new PublicKey(d.slice(off, off + 32)).toBase58(); off += 32;
+  const shareMint = new PublicKey(d.slice(off, off + 32)).toBase58(); off += 32;
   off += 32; // percolator_program
-  const slab = new PublicKey(data.subarray(off, off + 32)).toBase58(); off += 32;
-  const userIdx = data.readUInt16LE(off); off += 2;
-  const totalShares = data.readBigUInt64LE(off); off += 8;
-  const totalDeposits = data.readBigUInt64LE(off); off += 8;
-  const perfFeeBps = data.readUInt16LE(off); off += 2;
-  const mgmtFeeBps = data.readUInt16LE(off); off += 2;
+  const slab = new PublicKey(d.slice(off, off + 32)).toBase58(); off += 32;
+  const userIdx = readU16LE(d, off); off += 2;
+  const totalShares = readU64LE(d, off); off += 8;
+  const totalDeposits = readU64LE(d, off); off += 8;
+  const perfFeeBps = readU16LE(d, off); off += 2;
+  const mgmtFeeBps = readU16LE(d, off); off += 2;
   off += 8; // high_water_mark
   off += 8; // last_fee_collection
-  const depositCap = data.readBigUInt64LE(off); off += 8;
-  const paused = data.readUInt8(off) !== 0; off += 1;
-  const initialized = data.readUInt8(off) !== 0; off += 1;
+  const depositCap = readU64LE(d, off); off += 8;
+  const paused = readU8(d, off) !== 0; off += 1;
+  const initialized = readU8(d, off) !== 0; off += 1;
 
   return {
     manager, collateralMint, shareMint, slab, userIdx,
@@ -76,7 +84,7 @@ export default function VaultDashboard() {
         setError("Vault not found on-chain");
         return;
       }
-      const data = parseVaultData(Buffer.from(info.data));
+      const data = parseVaultData(new Uint8Array(info.data));
       setVault(data);
 
       // Fetch user's share balance
