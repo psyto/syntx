@@ -157,7 +157,7 @@ export default function VaultDashboard() {
           { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
           { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
         ],
-        data: Buffer.from(data),
+        data: data as any,
       }));
 
       setTxStatus("Confirm in wallet...");
@@ -165,7 +165,12 @@ export default function VaultDashboard() {
       setTxStatus("Confirming...");
       await connection.confirmTransaction(sig, "confirmed");
       setTxStatus(null); setDepositAmt(""); fetchData();
-    } catch (e: any) { setTxError(e?.message?.slice(0, 120) || "Failed"); setTxStatus(null); }
+    } catch (e: any) {
+      console.error("Deposit error:", e);
+      const msg = e?.logs?.join("\n") || e?.message || "Failed";
+      setTxError(msg.slice(0, 200));
+      setTxStatus(null);
+    }
   };
 
   const handleWithdraw = async () => {
@@ -202,7 +207,7 @@ export default function VaultDashboard() {
           { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
           { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
         ],
-        data: Buffer.from(data),
+        data: data as any,
       }));
 
       setTxStatus("Confirm in wallet...");
@@ -210,7 +215,12 @@ export default function VaultDashboard() {
       setTxStatus("Confirming...");
       await connection.confirmTransaction(sig, "confirmed");
       setTxStatus(null); setWithdrawAmt(""); fetchData();
-    } catch (e: any) { setTxError(e?.message?.slice(0, 120) || "Failed"); setTxStatus(null); }
+    } catch (e: any) {
+      console.error("Withdraw error:", e);
+      const msg = e?.logs?.join("\n") || e?.message || "Failed";
+      setTxError(msg.slice(0, 200));
+      setTxStatus(null);
+    }
   };
 
   return (
