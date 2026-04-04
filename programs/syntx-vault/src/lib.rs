@@ -596,6 +596,107 @@ pub mod syntx_vault {
         msg!("Vault paused: {}", paused);
         Ok(())
     }
+
+    /// On-chain share price oracle. Returns vault equity data via program return_data.
+    /// Other programs can CPI this to get the current share price.
+    ///
+    /// Returns (as little-endian bytes):
+    ///   total_shares: u64 (8 bytes)
+    ///   total_deposits: u64 (8 bytes)
+    ///   share_price_e6: u64 (8 bytes) — price in 1e6 fixed point
+    pub fn get_share_price(ctx: Context<GetSharePrice>) -> Result<()> {
+        let vault = &ctx.accounts.vault_state;
+
+        let share_price_e6: u64 = if vault.total_shares > 0 {
+            ((vault.total_deposits as u128) * 1_000_000 / (vault.total_shares as u128)) as u64
+        } else {
+            1_000_000 // 1.0 in e6
+        };
+
+        // Return data via set_return_data — other programs can read this via get_return_data
+        let mut result = Vec::with_capacity(24);
+        result.extend_from_slice(&vault.total_shares.to_le_bytes());
+        result.extend_from_slice(&vault.total_deposits.to_le_bytes());
+        result.extend_from_slice(&share_price_e6.to_le_bytes());
+
+        solana_program::program::set_return_data(&result);
+
+        msg!("Share price: {} e6 ({}/{})", share_price_e6, vault.total_deposits, vault.total_shares);
+        Ok(())
+    }
+
+    /// Public CPI trade — allows other Solana programs to open/close positions
+    /// via the vault. The calling program signs with its own authority.
+    ///
+    /// Unlike manager_trade (keeper-only), this is permissionless for CPI callers.
+    /// The vault PDA still signs the Percolator trade.
+    pub fn cpi_trade(
+        ctx: Context<CpiTrade>,
+        lp_idx: u16,
+        size: i128,
+    ) -> Result<()> {
+        let vault = &ctx.accounts.vault_state;
+        require!(vault.initialized, SyntxError::NotInitialized);
+        require!(!vault.paused, SyntxError::VaultPaused);
+
+        // Size limit for CPI trades — prevent external protocols from taking huge positions
+        // Manager can set this via update_cpi_limit (not yet implemented)
+        let max_cpi_size: i128 = 1_000_000; // 1M units max per CPI trade
+        require!(
+            size.abs() <= max_cpi_size,
+            SyntxError::CpiTradeTooLarge
+        );
+
+        let vault_seeds: &[&[u8]] = &[
+            b"vault",
+            vault.collateral_mint.as_ref(),
+            vault.manager.as_ref(),
+            &[vault.bump],
+        ];
+
+        let mut ix_data = Vec::with_capacity(21);
+        ix_data.push(percolator_ix::TRADE_NO_CPI);
+        ix_data.extend_from_slice(&lp_idx.to_le_bytes());
+        ix_data.extend_from_slice(&vault.percolator_user_idx.to_le_bytes());
+        ix_data.extend_from_slice(&size.to_le_bytes());
+
+        let ix = solana_program::instruction::Instruction {
+            program_id: vault.percolator_program,
+            accounts: vec![
+                solana_program::instruction::AccountMeta::new_readonly(
+                    ctx.accounts.vault_state.key(), true,
+                ),
+                solana_program::instruction::AccountMeta::new_readonly(
+                    ctx.accounts.lp_owner.key(), true,
+                ),
+                solana_program::instruction::AccountMeta::new(
+                    ctx.accounts.percolator_slab.key(), false,
+                ),
+                solana_program::instruction::AccountMeta::new_readonly(
+                    ctx.accounts.clock.key(), false,
+                ),
+                solana_program::instruction::AccountMeta::new_readonly(
+                    ctx.accounts.oracle.key(), false,
+                ),
+            ],
+            data: ix_data,
+        };
+
+        solana_program::program::invoke_signed(
+            &ix,
+            &[
+                ctx.accounts.vault_state.to_account_info(),
+                ctx.accounts.lp_owner.to_account_info(),
+                ctx.accounts.percolator_slab.to_account_info(),
+                ctx.accounts.clock.to_account_info(),
+                ctx.accounts.oracle.to_account_info(),
+            ],
+            &[vault_seeds],
+        )?;
+
+        msg!("CPI trade: caller={}, lp={}, size={}", ctx.accounts.caller.key(), lp_idx, size);
+        Ok(())
+    }
 }
 
 // =============================================================================
@@ -883,6 +984,43 @@ pub struct ManagerOnly<'info> {
     pub vault_state: Box<Account<'info, VaultState>>,
 }
 
+#[derive(Accounts)]
+pub struct GetSharePrice<'info> {
+    #[account(
+        seeds = [b"vault", vault_state.collateral_mint.as_ref(), vault_state.manager.as_ref()],
+        bump = vault_state.bump,
+    )]
+    pub vault_state: Box<Account<'info, VaultState>>,
+}
+
+#[derive(Accounts)]
+pub struct CpiTrade<'info> {
+    /// The calling program's authority — any signer can CPI trade
+    pub caller: Signer<'info>,
+
+    #[account(
+        seeds = [b"vault", vault_state.collateral_mint.as_ref(), vault_state.manager.as_ref()],
+        bump = vault_state.bump,
+    )]
+    pub vault_state: Box<Account<'info, VaultState>>,
+
+    /// LP owner (must be signer for TradeNoCpi)
+    pub lp_owner: Signer<'info>,
+
+    /// CHECK: Validated by Percolator
+    #[account(mut, address = vault_state.percolator_slab)]
+    pub percolator_slab: AccountInfo<'info>,
+
+    /// CHECK: Oracle price feed
+    pub oracle: AccountInfo<'info>,
+
+    /// CHECK: Percolator program
+    #[account(executable, address = vault_state.percolator_program)]
+    pub percolator_program: AccountInfo<'info>,
+
+    pub clock: Sysvar<'info, Clock>,
+}
+
 // =============================================================================
 // State
 // =============================================================================
@@ -942,4 +1080,6 @@ pub enum SyntxError {
     NotInitialized,
     #[msg("Not enough shares to burn")]
     InsufficientShares,
+    #[msg("CPI trade size exceeds limit")]
+    CpiTradeTooLarge,
 }

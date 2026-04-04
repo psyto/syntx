@@ -19,6 +19,10 @@ const VaultDashboard = dynamic(() => import("./components/VaultDashboard"), {
   ),
 });
 
+const SwapDeposit = dynamic(() => import("./components/SwapDeposit"), {
+  ssr: false,
+});
+
 export default function Home() {
   const { connected } = useWallet();
 
@@ -71,6 +75,9 @@ export default function Home() {
       <main className="flex-1">
         <div className="max-w-[1100px] mx-auto px-6 py-10">
           <VaultDashboard />
+          <div className="mt-6">
+            <SwapDeposit onSuccess={() => {}} />
+          </div>
         </div>
       </main>
 
