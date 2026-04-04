@@ -240,6 +240,134 @@ pub mod syntx_vault {
         Ok(())
     }
 
+    /// Withdraw collateral from the vault. Burns share tokens, returns USDC.
+    pub fn withdraw(ctx: Context<Withdraw>, shares_to_burn: u64) -> Result<()> {
+        let vault = &ctx.accounts.vault_state;
+        require!(vault.initialized, SyntxError::NotInitialized);
+        require!(!vault.paused, SyntxError::VaultPaused);
+        require!(shares_to_burn > 0, SyntxError::ZeroAmount);
+        require!(shares_to_burn <= vault.total_shares, SyntxError::InsufficientShares);
+
+        // Calculate withdrawal amount: amount = shares * total_deposits / total_shares
+        let withdraw_amount = (shares_to_burn as u128)
+            .checked_mul(vault.total_deposits as u128)
+            .unwrap()
+            .checked_div(vault.total_shares as u128)
+            .unwrap() as u64;
+        require!(withdraw_amount > 0, SyntxError::ZeroAmount);
+
+        // Burn shares first
+        token::burn(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                token::Burn {
+                    mint: ctx.accounts.share_mint.to_account_info(),
+                    from: ctx.accounts.user_shares.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            shares_to_burn,
+        )?;
+
+        // CPI: Percolator WithdrawCollateral
+        // accounts: [0]user(signer) [1]slab(w) [2]perc_vault(w) [3]user_ata(w) [4]vault_pda [5]token [6]clock [7]oracle
+        let vault = &ctx.accounts.vault_state;
+        let vault_seeds: &[&[u8]] = &[
+            b"vault",
+            vault.collateral_mint.as_ref(),
+            vault.manager.as_ref(),
+            &[vault.bump],
+        ];
+
+        let mut ix_data = Vec::with_capacity(11);
+        ix_data.push(percolator_ix::WITHDRAW_COLLATERAL);
+        ix_data.extend_from_slice(&vault.percolator_user_idx.to_le_bytes());
+        ix_data.extend_from_slice(&withdraw_amount.to_le_bytes());
+
+        let ix = solana_program::instruction::Instruction {
+            program_id: vault.percolator_program,
+            accounts: vec![
+                // [0] user = vault PDA (signer)
+                solana_program::instruction::AccountMeta::new_readonly(
+                    ctx.accounts.vault_state.key(), true,
+                ),
+                // [1] slab (writable)
+                solana_program::instruction::AccountMeta::new(
+                    ctx.accounts.percolator_slab.key(), false,
+                ),
+                // [2] percolator vault token account
+                solana_program::instruction::AccountMeta::new(
+                    ctx.accounts.percolator_vault.key(), false,
+                ),
+                // [3] destination = vault's collateral account (funds come here)
+                solana_program::instruction::AccountMeta::new(
+                    ctx.accounts.vault_collateral.key(), false,
+                ),
+                // [4] percolator vault authority PDA
+                solana_program::instruction::AccountMeta::new_readonly(
+                    ctx.accounts.percolator_vault_authority.key(), false,
+                ),
+                // [5] token program
+                solana_program::instruction::AccountMeta::new_readonly(
+                    ctx.accounts.token_program.key(), false,
+                ),
+                // [6] clock
+                solana_program::instruction::AccountMeta::new_readonly(
+                    ctx.accounts.clock.key(), false,
+                ),
+                // [7] oracle
+                solana_program::instruction::AccountMeta::new_readonly(
+                    ctx.accounts.oracle.key(), false,
+                ),
+            ],
+            data: ix_data,
+        };
+
+        solana_program::program::invoke_signed(
+            &ix,
+            &[
+                ctx.accounts.vault_state.to_account_info(),
+                ctx.accounts.percolator_slab.to_account_info(),
+                ctx.accounts.percolator_vault.to_account_info(),
+                ctx.accounts.vault_collateral.to_account_info(),
+                ctx.accounts.percolator_vault_authority.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.clock.to_account_info(),
+                ctx.accounts.oracle.to_account_info(),
+            ],
+            &[vault_seeds],
+        )?;
+
+        // Transfer withdrawn funds from vault's collateral account to user
+        let transfer_seeds: &[&[u8]] = &[
+            b"vault",
+            ctx.accounts.vault_state.collateral_mint.as_ref(),
+            ctx.accounts.vault_state.manager.as_ref(),
+            &[ctx.accounts.vault_state.bump],
+        ];
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.vault_collateral.to_account_info(),
+                    to: ctx.accounts.user_collateral.to_account_info(),
+                    authority: ctx.accounts.vault_state.to_account_info(),
+                },
+                &[transfer_seeds],
+            ),
+            withdraw_amount,
+        )?;
+
+        // Update vault state
+        let vault = &mut ctx.accounts.vault_state;
+        vault.total_shares = vault.total_shares.checked_sub(shares_to_burn).unwrap();
+        vault.total_deposits = vault.total_deposits.checked_sub(withdraw_amount).unwrap();
+
+        msg!("Withdrew {}, burned {} shares", withdraw_amount, shares_to_burn);
+        Ok(())
+    }
+
     /// Manager executes a trade on Percolator.
     pub fn manager_trade(
         ctx: Context<ManagerTrade>,
@@ -482,6 +610,66 @@ pub struct Deposit<'info> {
 }
 
 #[derive(Accounts)]
+pub struct Withdraw<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", vault_state.collateral_mint.as_ref(), vault_state.manager.as_ref()],
+        bump = vault_state.bump,
+    )]
+    pub vault_state: Box<Account<'info, VaultState>>,
+
+    /// User's share token account (source — shares burned from here)
+    #[account(mut, token::mint = vault_state.share_mint)]
+    pub user_shares: Box<Account<'info, TokenAccount>>,
+
+    /// User's collateral token account (destination — USDC returned here)
+    #[account(
+        mut,
+        token::mint = vault_state.collateral_mint,
+        token::authority = user,
+    )]
+    pub user_collateral: Box<Account<'info, TokenAccount>>,
+
+    /// Vault's collateral token account
+    #[account(
+        mut,
+        token::mint = vault_state.collateral_mint,
+        token::authority = vault_state,
+    )]
+    pub vault_collateral: Box<Account<'info, TokenAccount>>,
+
+    /// Share mint (for burning)
+    #[account(mut, address = vault_state.share_mint)]
+    pub share_mint: Box<Account<'info, Mint>>,
+
+    /// CHECK: Validated by Percolator
+    #[account(mut, address = vault_state.percolator_slab)]
+    pub percolator_slab: AccountInfo<'info>,
+
+    /// Percolator's vault token account
+    /// CHECK: Validated by Percolator
+    #[account(mut)]
+    pub percolator_vault: AccountInfo<'info>,
+
+    /// Percolator's vault authority PDA
+    /// CHECK: Validated by Percolator
+    pub percolator_vault_authority: AccountInfo<'info>,
+
+    /// CHECK: Oracle price feed
+    pub oracle: AccountInfo<'info>,
+
+    /// CHECK: Percolator program
+    #[account(executable, address = vault_state.percolator_program)]
+    pub percolator_program: AccountInfo<'info>,
+
+    pub token_program: Program<'info, Token>,
+    pub clock: Sysvar<'info, Clock>,
+}
+
+#[derive(Accounts)]
 pub struct ManagerTrade<'info> {
     #[account(constraint = manager.key() == vault_state.manager @ SyntxError::Unauthorized)]
     pub manager: Signer<'info>,
@@ -604,4 +792,6 @@ pub enum SyntxError {
     AlreadyInitialized,
     #[msg("Vault not yet initialized on Percolator")]
     NotInitialized,
+    #[msg("Not enough shares to burn")]
+    InsufficientShares,
 }
