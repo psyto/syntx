@@ -87,7 +87,7 @@ export default function VaultList() {
       setLoading(true);
       // Fetch all accounts owned by Syntx program
       const accounts = await connection.getProgramAccounts(SYNTX_PROGRAM_ID, {
-        dataSlice: { offset: 0, length: 210 }, // enough to parse VaultState
+        dataSlice: { offset: 0, length: 260 }, // enough for VaultState with circuit breaker fields
       });
 
       const parsed: VaultEntry[] = [];
