@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useWallet } from "@solana/wallet-adapter-react";
 
@@ -9,30 +8,12 @@ const WalletMultiButton = dynamic(
   { ssr: false },
 );
 
-const VaultDashboard = dynamic(() => import("./components/VaultDashboard"), {
-  ssr: false,
-  loading: () => (
-    <div className="space-y-4">
-      <div className="shimmer h-48 rounded-xl" />
-      <div className="shimmer h-32 rounded-xl" />
-      <div className="shimmer h-40 rounded-xl" />
-    </div>
-  ),
-});
-
-const SwapDeposit = dynamic(() => import("./components/SwapDeposit"), {
-  ssr: false,
-});
-
 const VaultList = dynamic(() => import("./components/VaultList"), {
   ssr: false,
 });
 
 export default function Home() {
   const { connected } = useWallet();
-  const [selectedVault, setSelectedVault] = useState<string | null>(
-    "4pL2aQawAbc2XwjRE9ptrH4yxihn4BL2uVMavgZrtYUK" // default to our devnet vault
-  );
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -82,22 +63,8 @@ export default function Home() {
       {/* Main */}
       <main className="flex-1">
         <div className="max-w-[1100px] mx-auto px-6 py-10">
-          {/* Vault Marketplace */}
-          <VaultList onSelectVault={setSelectedVault} />
-
-          {/* Selected Vault Dashboard */}
-          {selectedVault && (
-            <div className="mt-6">
-              <VaultDashboard vaultPda={selectedVault} />
-            </div>
-          )}
-
-          {/* Swap & Deposit */}
-          {connected && selectedVault && (
-            <div className="mt-6">
-              <SwapDeposit onSuccess={() => {}} />
-            </div>
-          )}
+          {/* Vault Marketplace — accordion: click vault to expand dashboard */}
+          <VaultList />
         </div>
       </main>
 

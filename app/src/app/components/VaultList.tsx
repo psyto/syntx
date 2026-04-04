@@ -8,7 +8,9 @@ import {
   TransactionInstruction,
   SystemProgram,
 } from "@solana/web3.js";
-import { createMint, getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
+import dynamic from "next/dynamic";
+
+const VaultDashboard = dynamic(() => import("./VaultDashboard"), { ssr: false });
 
 const SYNTX_PROGRAM_ID = new PublicKey("53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V");
 
@@ -72,16 +74,13 @@ function short(addr: string): string {
   return addr.slice(0, 4) + "..." + addr.slice(-4);
 }
 
-export default function VaultList({
-  onSelectVault,
-}: {
-  onSelectVault: (pubkey: string) => void;
-}) {
+export default function VaultList() {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
   const [vaults, setVaults] = useState<VaultEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [expandedVault, setExpandedVault] = useState<string | null>(null);
 
   const fetchVaults = useCallback(async () => {
     try {
@@ -141,31 +140,44 @@ export default function VaultList({
         </div>
       ) : (
         <div className="space-y-2">
-          {vaults.map((v) => (
-            <button
-              key={v.pubkey}
-              onClick={() => onSelectVault(v.pubkey)}
-              className="w-full panel p-4 text-left hover:border-[var(--border-hover)] transition"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm">{short(v.pubkey)}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${v.initialized ? (v.paused ? "bg-red-950 text-[var(--red)]" : "bg-green-950 text-[var(--green)]") : "bg-yellow-950 text-yellow-400"}`}>
-                    {v.initialized ? (v.paused ? "PAUSED" : "ACTIVE") : "SETUP"}
-                  </span>
-                </div>
-                <span className="text-xs text-[var(--text-dim)]">
-                  {v.perfFeeBps / 100}% perf / {v.mgmtFeeBps / 100}% mgmt
-                </span>
+          {vaults.map((v) => {
+            const isExpanded = expandedVault === v.pubkey;
+            return (
+              <div key={v.pubkey} className="panel overflow-hidden">
+                {/* Vault Header — click to toggle */}
+                <button
+                  onClick={() => setExpandedVault(isExpanded ? null : v.pubkey)}
+                  className="w-full p-4 text-left hover:bg-[var(--bg-card)] transition"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[var(--text-dim)] mr-1">{isExpanded ? "▼" : "▶"}</span>
+                      <span className="font-mono text-sm">{short(v.pubkey)}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${v.initialized ? (v.paused ? "bg-red-950 text-[var(--red)]" : "bg-green-950 text-[var(--green)]") : "bg-yellow-950 text-yellow-400"}`}>
+                        {v.initialized ? (v.paused ? "PAUSED" : "ACTIVE") : "SETUP"}
+                      </span>
+                    </div>
+                    <span className="text-xs text-[var(--text-dim)]">
+                      {v.perfFeeBps / 100}% perf / {v.mgmtFeeBps / 100}% mgmt
+                    </span>
+                  </div>
+                  <div className="flex gap-6 text-xs text-[var(--text-muted)]">
+                    <span>TVL: {(Number(v.totalDeposits) / 1_000_000).toFixed(2)}</span>
+                    <span>Shares: {v.totalShares.toLocaleString()}</span>
+                    <span>Manager: {short(v.manager)}</span>
+                    <span>Slab: {short(v.slab)}</span>
+                  </div>
+                </button>
+
+                {/* Expanded: Vault Dashboard */}
+                {isExpanded && (
+                  <div className="border-t border-[var(--border)] p-4 bg-[var(--bg)]">
+                    <VaultDashboard vaultPda={v.pubkey} />
+                  </div>
+                )}
               </div>
-              <div className="flex gap-6 text-xs text-[var(--text-muted)]">
-                <span>TVL: {(Number(v.totalDeposits) / 1_000_000).toFixed(2)}</span>
-                <span>Shares: {v.totalShares.toLocaleString()}</span>
-                <span>Manager: {short(v.manager)}</span>
-                <span>Slab: {short(v.slab)}</span>
-              </div>
-            </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
