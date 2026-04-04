@@ -126,6 +126,18 @@ pub mod syntx_vault {
     }
 
     /// Deposit collateral into the vault. Mints share tokens to the depositor.
+    ///
+    /// Per Percolator spec §10.3:
+    /// - deposit is a pure capital-transfer instruction (no accrue_market_to)
+    /// - for new accounts, amount must be >= MIN_INITIAL_DEPOSIT (enforced by Percolator CPI)
+    /// - deposit does NOT realize recurring maintenance fees
+    /// - deposit does NOT make A/K side effects authoritative
+    ///
+    /// Share price uses total_deposits / total_shares. This does NOT reflect:
+    /// - Unrealized trading PnL (requires oracle)
+    /// - Warmup reserves (R_i locked until matured)
+    /// - Recurring maintenance fees (lazy, realized on touch)
+    /// A future version should read true equity from the Percolator slab.
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         let vault = &ctx.accounts.vault_state;
         require!(vault.initialized, SyntxError::NotInitialized);
@@ -240,11 +252,26 @@ pub mod syntx_vault {
         vault.total_shares = vault.total_shares.checked_add(shares_to_mint).unwrap();
         vault.total_deposits = vault.total_deposits.checked_add(amount).unwrap();
 
+        // Update peak equity for circuit breaker (spec §10.4 compliance)
+        if vault.total_deposits > vault.peak_equity {
+            vault.peak_equity = vault.total_deposits;
+        }
+
         msg!("Deposited {}, minted {} shares", amount, shares_to_mint);
         Ok(())
     }
 
     /// Withdraw collateral from the vault. Burns share tokens, returns USDC.
+    ///
+    /// Per Percolator spec §10.4: post-withdraw capital must be either 0 or
+    /// >= MIN_INITIAL_DEPOSIT. This is enforced at the Percolator level, but
+    /// we also check at the Syntx level to prevent wasted transaction fees.
+    ///
+    /// Share price note: total_deposits tracks cumulative deposits/withdrawals
+    /// but does NOT reflect unrealized PnL, warmup reserves, or maintenance fees.
+    /// The true vault equity requires reading the Percolator slab's account state
+    /// (capital + PnL - fee_debt). This is a known limitation of the current
+    /// share price model. A future version should read equity from the slab.
     pub fn withdraw(ctx: Context<Withdraw>, shares_to_burn: u64) -> Result<()> {
         let vault = &ctx.accounts.vault_state;
         require!(vault.initialized, SyntxError::NotInitialized);
@@ -253,6 +280,7 @@ pub mod syntx_vault {
         require!(shares_to_burn <= vault.total_shares, SyntxError::InsufficientShares);
 
         // Calculate withdrawal amount: amount = shares * total_deposits / total_shares
+        // NOTE: This uses total_deposits, not true Percolator equity. See doc comment above.
         let withdraw_amount = (shares_to_burn as u128)
             .checked_mul(vault.total_deposits as u128)
             .unwrap()
@@ -372,7 +400,18 @@ pub mod syntx_vault {
         Ok(())
     }
 
-    /// Manager executes a trade on Percolator.
+    /// Manager executes a trade on Percolator via TradeNoCpi.
+    ///
+    /// Per Percolator spec §10.5:
+    /// - Percolator internally calls accrue_market_to before executing
+    /// - Both user (vault PDA) and LP must be signers
+    /// - Trade fees are charged via charge_fee_to_insurance
+    /// - Post-trade margin is enforced by Percolator
+    /// - Percolator handles warmup reserve for any new positive PnL
+    ///
+    /// Syntx-level checks:
+    /// - Circuit breaker: drawdown from peak equity
+    /// - Vault must be initialized and not paused
     pub fn manager_trade(
         ctx: Context<ManagerTrade>,
         lp_idx: u16,
