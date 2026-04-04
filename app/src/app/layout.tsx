@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { Providers } from "./providers";
+import Nav from "./components/Nav";
+import Footer from "./components/Footer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -12,11 +15,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-import { Providers } from "./providers";
-
 export const metadata: Metadata = {
-  title: "Syntx — Composable Perp DEX",
-  description: "Vault-native perpetual futures on Solana, powered by Percolator",
+  title: "Syntx — Composable Perp Vaults",
+  description: "Launch and manage composable strategy vaults on Solana. Powered by Percolator.",
 };
 
 export default function RootLayout({
@@ -29,8 +30,12 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-gray-950 text-white">
-        <Providers>{children}</Providers>
+      <body className="min-h-full flex flex-col">
+        <Providers>
+          <Nav />
+          <main className="flex-1">{children}</main>
+          <Footer />
+        </Providers>
       </body>
     </html>
   );
