@@ -1,5 +1,5 @@
-import { loadConfig } from "./config.js";
-import { runKeeper } from "./keeper.js";
+import { loadConfig } from "./config";
+import { runKeeper } from "./keeper";
 
 async function main(): Promise<void> {
   const config = loadConfig();
