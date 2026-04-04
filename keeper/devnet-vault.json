@@ -1,0 +1,15 @@
+{
+  "network": "devnet",
+  "createdAt": "2026-04-04T06:45:46.320Z",
+  "syntxProgramId": "53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V",
+  "percolatorProgramId": "Edq18N2pdT3Sz9EukbZe4YsQkvmxvmmkUL1KHpv96xJF",
+  "slab": "J55KavPouZg8ZeWnTY77ZBL2DdQskzKpkFvuTtbUNzYC",
+  "collateralMint": "2uGTCDSfisKCTN2Yd8umXiWJzfRpWe8mhZM6WCK2vj8D",
+  "percolatorVault": "A6HXGe48sAH1fKf43dipr5uoDqjEeCfuZE3gLKnVCY43",
+  "percolatorVaultPda": "8a17hNXUvTah2DaKNYi7rd78o4m9FQhymr6TXHWfCw5Q",
+  "vaultPda": "4pL2aQawAbc2XwjRE9ptrH4yxihn4BL2uVMavgZrtYUK",
+  "shareMint": "6KMkX75jzL4jEDo9TXAr9NvCWefLnnv5vWLTtHtcmJqS",
+  "vaultCollateral": "FfoNKzF2c48CBu84EkavTgrbMMa5LhfVYFfqBYDt12wD",
+  "percolatorUserIdx": 0,
+  "feedId": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
+}

@@ -33,9 +33,11 @@ const RPC_URL = "https://api.devnet.solana.com";
 const SYNTX_PROGRAM_ID = new PublicKey("53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V");
 const PERCOLATOR_PROGRAM_ID = new PublicKey("Edq18N2pdT3Sz9EukbZe4YsQkvmxvmmkUL1KHpv96xJF");
 
-// Production SLAB_LEN for MAX_ACCOUNTS=4096 (latest Percolator)
-// Percolator must be built WITHOUT --features test for real CPI to work
+// Production SLAB_LEN for MAX_ACCOUNTS=4096 (latest Percolator, no --features test)
 const SLAB_LEN = 1_156_800;
+
+// NOTE: max_accounts in InitMarket must match the binary's MAX_ACCOUNTS
+const MAX_ACCOUNTS = 4096;
 
 // SOL/USD Pyth feed ID (devnet)
 const SOL_USD_FEED_ID = "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d";
