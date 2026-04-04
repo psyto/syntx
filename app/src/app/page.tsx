@@ -10,56 +10,84 @@ const WalletMultiButton = dynamic(
 
 const VaultDashboard = dynamic(() => import("./components/VaultDashboard"), {
   ssr: false,
+  loading: () => (
+    <div className="space-y-4">
+      <div className="shimmer h-48 rounded-xl" />
+      <div className="shimmer h-32 rounded-xl" />
+      <div className="shimmer h-40 rounded-xl" />
+    </div>
+  ),
 });
 
 export default function Home() {
   const { connected } = useWallet();
 
   return (
-    <main className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-gray-800 px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">Syntx</h1>
-            <span className="text-xs bg-blue-900/50 text-blue-300 px-2 py-0.5 rounded-full">
-              devnet
+      <header className="sticky top-0 z-50 border-b bg-[var(--bg)]/80 backdrop-blur-md">
+        <div className="max-w-[1100px] mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h1 className="text-xl font-bold tracking-tight">syntx</h1>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded border text-[var(--text-dim)]">
+              DEVNET
             </span>
           </div>
-          <WalletMultiButton />
+          <div className="flex items-center gap-4">
+            <a
+              href="https://github.com/psyto/syntx"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-[var(--text-muted)] hover:text-white transition"
+            >
+              Docs
+            </a>
+            <WalletMultiButton />
+          </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <div className="max-w-5xl mx-auto px-6 py-8">
-        {/* Hero */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold mb-2">Composable Perp Vault</h2>
-          <p className="text-gray-400 max-w-2xl">
-            Deposit collateral into strategy vaults that trade perpetual futures on Percolator.
-            Earn yield from funding rate harvesting, delta-neutral strategies, and market making.
+      {/* Hero */}
+      <section className="grid-bg border-b">
+        <div className="max-w-[1100px] mx-auto px-6 py-20">
+          <h2 className="text-4xl md:text-5xl font-bold tracking-tight leading-tight mb-4">
+            Composable Perp Vaults
+            <br />
+            <span className="text-[var(--text-muted)]">on Solana</span>
+          </h2>
+          <p className="text-[var(--text-muted)] text-lg max-w-xl mb-8">
+            Deposit into strategy vaults that trade perpetual futures on Percolator.
+            Vault-native. Formally verified. Protocol-owned liquidity.
           </p>
+          {!connected && (
+            <div className="flex gap-3">
+              <WalletMultiButton />
+            </div>
+          )}
         </div>
+      </section>
 
-        {/* Dashboard */}
-        <VaultDashboard />
+      {/* Main */}
+      <main className="flex-1">
+        <div className="max-w-[1100px] mx-auto px-6 py-10">
+          <VaultDashboard />
+        </div>
+      </main>
 
-        {/* Footer */}
-        <footer className="mt-12 pt-6 border-t border-gray-800 text-center text-xs text-gray-500">
-          <p>
+      {/* Footer */}
+      <footer className="border-t">
+        <div className="max-w-[1100px] mx-auto px-6 py-6 flex items-center justify-between text-xs text-[var(--text-dim)]">
+          <span>
             Built on{" "}
-            <a href="https://github.com/aeyakovenko/percolator" className="text-blue-400 hover:text-blue-300">
+            <a href="https://github.com/aeyakovenko/percolator" className="text-[var(--text-muted)] hover:text-white transition">
               Percolator
             </a>
-            {" "}by Anatoly Yakovenko
-          </p>
-          <p className="mt-1">
-            <a href="https://github.com/psyto/syntx" className="text-blue-400 hover:text-blue-300">
-              github.com/psyto/syntx
-            </a>
-          </p>
-        </footer>
-      </div>
-    </main>
+          </span>
+          <a href="https://github.com/psyto/syntx" className="text-[var(--text-muted)] hover:text-white transition">
+            GitHub
+          </a>
+        </div>
+      </footer>
+    </div>
   );
 }
