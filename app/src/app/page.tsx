@@ -88,7 +88,7 @@ export default function Home() {
           {/* Selected Vault Dashboard */}
           {selectedVault && (
             <div className="mt-6">
-              <VaultDashboard />
+              <VaultDashboard vaultPda={selectedVault} />
             </div>
           )}
 
