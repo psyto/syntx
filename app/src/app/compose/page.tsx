@@ -10,6 +10,8 @@ const WalletMultiButton = dynamic(
   { ssr: false },
 );
 
+const SwapDeposit = dynamic(() => import("../components/SwapDeposit"), { ssr: false });
+
 interface Recipe {
   id: string;
   title: string;
@@ -185,7 +187,11 @@ export default function ComposePage() {
                     ))}
                   </div>
 
-                  {r.status === "live" ? (
+                  {r.status === "live" && r.id === "swap-deposit" ? (
+                    <div className="mt-4">
+                      <SwapDeposit onSuccess={() => {}} />
+                    </div>
+                  ) : r.status === "live" ? (
                     <a
                       href="/vaults"
                       className="mt-4 inline-flex h-9 px-5 items-center bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-lg text-xs font-medium transition"
