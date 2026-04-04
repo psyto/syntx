@@ -27,6 +27,17 @@ const WalletMultiButton = dynamic(
 
 const SYNTX_PROGRAM_ID = new PublicKey("53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V");
 
+// Known markets on devnet
+const KNOWN_MARKETS = [
+  {
+    name: "SOL-PERP",
+    slab: "J55KavPouZg8ZeWnTY77ZBL2DdQskzKpkFvuTtbUNzYC",
+    mint: "2uGTCDSfisKCTN2Yd8umXiWJzfRpWe8mhZM6WCK2vj8D",
+    percolatorProgram: "Edq18N2pdT3Sz9EukbZe4YsQkvmxvmmkUL1KHpv96xJF",
+  },
+  // BTC-PERP and ETH-PERP will be added after deployment
+];
+
 const steps = [
   { num: 1, title: "Market" },
   { num: 2, title: "Fees" },
@@ -246,13 +257,48 @@ export default function CreatePage() {
                 <p className="text-sm text-[var(--text-muted)]">
                   Choose the Percolator slab (market) your vault will trade on.
                 </p>
+
+                {/* Quick select from known markets */}
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)] block mb-1.5">Quick Select</label>
+                  <div className="flex gap-2">
+                    {KNOWN_MARKETS.map((m) => (
+                      <button
+                        key={m.name}
+                        onClick={() => {
+                          updateConfig("slab", m.slab);
+                          updateConfig("collateralMint", m.mint);
+                          updateConfig("percolatorProgram", m.percolatorProgram);
+                        }}
+                        className={`px-3 py-2 rounded-lg text-xs font-mono border transition ${
+                          config.slab === m.slab
+                            ? "border-[var(--primary)] bg-[var(--primary)]/10 text-white"
+                            : "border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-white"
+                        }`}
+                      >
+                        {m.name}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => { updateConfig("slab", ""); updateConfig("collateralMint", ""); }}
+                      className={`px-3 py-2 rounded-lg text-xs font-mono border transition ${
+                        config.slab && !KNOWN_MARKETS.find(m => m.slab === config.slab)
+                          ? "border-[var(--primary)] bg-[var(--primary)]/10 text-white"
+                          : "border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-white"
+                      }`}
+                    >
+                      Custom
+                    </button>
+                  </div>
+                </div>
+
                 <div className="space-y-4">
                   <Field
                     label="Percolator Slab Address"
                     value={config.slab}
                     onChange={(v) => updateConfig("slab", v)}
                     placeholder="e.g., J55KavPouZg8ZeWnTY77ZBL2DdQskzKpkFvuTtbUNzYC"
-                    help="The slab account for the perp market (SOL-PERP, BTC-PERP, etc.)"
+                    help="The slab account for the perp market"
                   />
                   <Field
                     label="Collateral Mint"
