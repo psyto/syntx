@@ -89,6 +89,9 @@ pub mod syntx_vault {
                 solana_program::instruction::AccountMeta::new_readonly(
                     ctx.accounts.token_program.key(), false,
                 ),
+                solana_program::instruction::AccountMeta::new_readonly(
+                    ctx.accounts.clock.key(), false,
+                ),
             ],
             data: ix_data,
         };
@@ -101,6 +104,7 @@ pub mod syntx_vault {
                 ctx.accounts.vault_collateral.to_account_info(),
                 ctx.accounts.percolator_vault.to_account_info(),
                 ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.clock.to_account_info(),
             ],
             &[vault_seeds],
         )?;
@@ -559,6 +563,7 @@ pub struct RegisterOnPercolator<'info> {
     pub percolator_program: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,
+    pub clock: Sysvar<'info, Clock>,
 }
 
 #[derive(Accounts)]

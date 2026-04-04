@@ -5,8 +5,8 @@
   "private": true,
   "scripts": {
     "build": "tsc",
-    "keeper": "node --loader ts-node/esm src/index.ts",
-    "keeper:dev": "node --watch --loader ts-node/esm src/index.ts"
+    "keeper": "npx ts-node src/index.ts",
+    "deploy": "npx ts-node src/deploy-vault.ts"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.9",
