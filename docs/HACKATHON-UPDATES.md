@@ -8,7 +8,7 @@
 
 **[0:00 - 0:10] Hook**
 
-"Drift got exploited for $285 million three days ago. Twenty protocols lost their composable perps layer overnight. We built a replacement in one session."
+"Solana needs a composable perp layer. We built one on Percolator — the Solana founder's own risk engine."
 
 **[0:10 - 0:25] What is Syntx**
 
@@ -73,7 +73,7 @@
 
 ### Section 1: Problem (30s)
 
-"On April 1st, Drift Protocol was exploited for $285 million. The largest Solana DeFi exploit on record. Twenty protocols lost their composable perps layer overnight. Jupiter's oracle-AMM can't serve programmatic strategies. Phoenix, Bulk, and Bullet aren't live yet. There is no composable perp layer on Solana right now."
+"Solana has the deepest retail user base in crypto, but no composable perp layer for programmatic strategies. Vault builders, delta-neutral strategies, and lending integrations need a perps primitive that composes with the rest of the DeFi stack. That's what we're building."
 
 ### Section 2: Solution (45s)
 
@@ -117,11 +117,11 @@
 
 ### Who we are (20s)
 
-"I'm Hiro from Fabrknt. I've built vault strategies on Drift, Hyperliquid, and GRVT — Yogi, Kodiak, and Polar. Five custom Percolator matchers. I know the perps stack inside out."
+"I'm Hiro from Fabrknt. I've built vault strategies across multiple perp protocols — Yogi, Kodiak, and Polar. Five custom Percolator matchers. I know the perps stack inside out."
 
 ### Problem (30s)
 
-"Drift is dead. $285M exploit. The composable perps layer on Solana is gone. Jupiter can't serve builders — it's oracle-AMM with a 1:1 OI cap. The incoming protocols — Phoenix, Bulk, Bullet — are months away."
+"Solana needs a composable perps layer for programmatic strategies. Existing solutions are either oracle-AMM with design ceilings, or not yet live. There's a gap — and it's exactly where composability matters most."
 
 "Twenty protocols lost their hedging infrastructure overnight. Vault builders, DN strategies, lending protocol integrations — all broken."
 

@@ -6,7 +6,7 @@ Syntx is a permissionless vault protocol for perpetual futures on Solana. It add
 
 ## The Problem
 
-After the Drift Protocol exploit (April 1, 2026, $285M lost), Solana has no composable perpetual futures layer. Jupiter's perps are oracle-AMM (unsuitable for programmatic strategies). Phoenix, Bulk, and Bullet are months from launch. 20+ protocols that depended on Drift have nowhere to go.
+Solana needs a composable perpetual futures layer. Existing perps are either oracle-AMM (unsuitable for programmatic strategies) or not yet live. Vault builders, delta-neutral strategies, and lending protocol integrations need a composable perps primitive that works with the rest of Solana's DeFi stack.
 
 ## What Syntx Does
 

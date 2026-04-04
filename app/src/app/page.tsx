@@ -123,8 +123,8 @@ export default function Home() {
         <div className="max-w-[1100px] mx-auto px-6 py-20 text-center">
           <h2 className="text-3xl font-bold mb-4">The composable perp layer Solana needs</h2>
           <p className="text-[var(--text-muted)] mb-8 max-w-lg mx-auto">
-            Drift is gone. Jupiter can&apos;t serve builders. Phoenix and Bulk aren&apos;t here yet.
-            Syntx is live on devnet.
+            Solana needs a composable perp layer. Syntx is building it on Percolator.
+            Live on devnet.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
