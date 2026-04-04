@@ -2,36 +2,42 @@
 
 ## Program Overview
 
-The Syntx vault program (`programs/syntx-vault/src/lib.rs`) is an Anchor-based Solana program that provides a vault layer on top of Percolator. It has 8 instructions and one state account.
+The Syntx vault program (`programs/syntx-vault/src/lib.rs`) is an Anchor-based Solana program that provides a vault layer on top of Percolator. It has 15 instructions and one state account.
 
 ## State: VaultState
 
 ```rust
 pub struct VaultState {
-    pub bump: u8,                    // PDA bump seed
-    pub manager: Pubkey,             // Keeper wallet — authorized to trade
-    pub collateral_mint: Pubkey,     // e.g., USDC mint
-    pub share_mint: Pubkey,          // Vault share SPL token mint
+    pub bump: u8,
+    pub manager: Pubkey,
+    pub collateral_mint: Pubkey,
+    pub share_mint: Pubkey,
 
     // Percolator integration
-    pub percolator_program: Pubkey,  // Percolator program ID
-    pub percolator_slab: Pubkey,     // Which market slab this vault targets
-    pub percolator_user_idx: u16,    // Account index in the slab (0-4095)
+    pub percolator_program: Pubkey,
+    pub percolator_slab: Pubkey,
+    pub percolator_user_idx: u16,
 
     // Share accounting
-    pub total_shares: u64,           // Total share tokens outstanding
-    pub total_deposits: u64,         // Total collateral deposited (before PnL)
+    pub total_shares: u64,
+    pub total_deposits: u64,
 
     // Fee structure
-    pub performance_fee_bps: u16,    // 2000 = 20% of profits
-    pub management_fee_bps: u16,     // 200 = 2% annual
-    pub high_water_mark: u64,        // For performance fee calculation
-    pub last_fee_collection: i64,    // Unix timestamp
+    pub performance_fee_bps: u16,
+    pub management_fee_bps: u16,
+    pub high_water_mark: u64,
+    pub last_fee_collection: i64,
 
     // Safety
-    pub deposit_cap: u64,            // Max deposits (0 = unlimited)
-    pub paused: bool,                // Emergency stop
-    pub initialized: bool,           // Has RegisterOnPercolator been called?
+    pub deposit_cap: u64,
+    pub paused: bool,
+    pub initialized: bool,
+
+    // Circuit breakers
+    pub max_drawdown_bps: u16,      // Auto-reject trades beyond this drawdown
+    pub peak_equity: u64,            // Highest recorded equity
+    pub cpi_whitelist: Pubkey,       // Only this program can call cpi_trade
+    pub max_cpi_trade_size: u64,     // Max single CPI trade size
 }
 ```
 
@@ -39,85 +45,64 @@ pub struct VaultState {
 
 ## Instructions
 
-### 1. init_vault
+### Core Vault
 
-Creates the VaultState PDA account.
+**init_vault** — Creates the VaultState PDA.
 
-**Accounts:**
-- `manager` (signer, payer) — will be the keeper
-- `vault_state` (init, PDA) — created by Anchor
-- `collateral_mint` — USDC or other SPL token
-- `share_mint` — must be pre-created with vault PDA as mint authority
-- `percolator_slab` — which market to trade on
-- `percolator_program` — Percolator program ID
-- `system_program`
+**register_on_percolator** — CPI to Percolator InitUser. The vault PDA becomes the owner of a trading account.
 
-**Params:** `performance_fee_bps`, `management_fee_bps`, `deposit_cap`
+**set_percolator_idx** — Stores the assigned account index from Percolator.
 
-### 2. register_on_percolator
+**deposit** — User sends collateral, CPI deposits to Percolator, mints shares.
 
-Calls Percolator `InitUser` via CPI. The vault PDA becomes the owner of a new trading account on the slab.
+**withdraw** — Burns shares, CPI withdraws from Percolator, returns collateral.
 
-**CPI call:**
+### Manager Operations
+
+**manager_trade** — Keeper executes trades via vault PDA. Includes circuit breaker check (drawdown from peak equity).
+
+**manager_crank** — CPI to Percolator KeeperCrank (funding settlement).
+
+**collect_fees** — Performance fee (% of profits above HWM) + management fee (% of AUM, pro-rated). Fees paid via share dilution.
+
+**update_manager** — Transfer management to a new keeper.
+
+**set_paused** — Emergency stop for deposits/withdrawals/trades.
+
+### Security
+
+**set_circuit_breaker** — Configure automatic protection:
+- `max_drawdown_bps`: reject trades when equity drops this much from peak (0 = disabled)
+- `cpi_whitelist`: restrict cpi_trade to a specific program (Pubkey::default() = any)
+- `max_cpi_trade_size`: cap per-trade size for CPI callers (0 = default 1M)
+
+### Composability
+
+**get_share_price** — Returns total_shares, total_deposits, share_price_e6 via `set_return_data`. Other programs read this to value Syntx shares as collateral.
+
+**cpi_trade** — Public trading interface for other Solana programs. Subject to:
+- CPI whitelist check (if configured)
+- Size limit check (configurable per vault)
+- Circuit breaker check (drawdown limit)
+- Vault pause check
+
+## Security Model
+
+### Circuit Breaker Flow
+
 ```
-Percolator InitUser {
-  accounts: [vault_pda(signer), slab(writable), vault_ata, perc_vault, token_program, clock],
-  data: [tag=1, fee_payment]
-}
-```
-
-The vault PDA signs via `invoke_signed` with seeds `["vault", mint, manager, bump]`.
-
-### 3. set_percolator_idx
-
-After registration, the manager reads the slab to find the assigned account index and stores it in vault state. This is needed for subsequent deposit/withdraw/trade calls that reference the account by index.
-
-### 4. deposit
-
-**Flow:**
-1. Transfer collateral from user → vault's token account (standard SPL transfer)
-2. CPI: Percolator `DepositCollateral` with vault PDA as signer
-3. Mint shares to user: `new_shares = amount * total_shares / total_deposits`
-
-### 5. withdraw
-
-**Flow:**
-1. Calculate: `withdraw_amount = shares * total_deposits / total_shares`
-2. Burn user's share tokens
-3. CPI: Percolator `WithdrawCollateral` with vault PDA as signer
-4. Transfer collateral from vault → user
-
-### 6. manager_trade
-
-Only callable by the authorized manager. Executes a trade on Percolator.
-
-**CPI call:**
-```
-Percolator TradeNoCpi {
-  accounts: [vault_pda(signer), lp_owner(signer), slab(writable), clock, oracle],
-  data: [tag=6, lp_idx, user_idx, size(i128)]
-}
+Trade request arrives (manager_trade or cpi_trade)
+  → Check: vault paused? → reject
+  → Check: vault initialized? → reject
+  → Check: cpi_trade caller whitelisted? → reject
+  → Check: cpi_trade size within limit? → reject
+  → Check: drawdown from peak > max_drawdown_bps? → reject
+  → All checks pass → execute trade via Percolator CPI
 ```
 
-**Note:** Both vault PDA and LP owner must be signers. The LP owner signs the outer transaction; the vault PDA signs via `invoke_signed`.
+The circuit breaker is **automatic** — no governance vote or manual intervention needed. When equity drops beyond the configured threshold, all trades are rejected until equity recovers.
 
-### 7. manager_crank
-
-Triggers Percolator funding settlement.
-
-**CPI call:**
-```
-Percolator KeeperCrank {
-  accounts: [vault_pda(signer), slab(writable), clock, oracle],
-  data: [tag=5, caller_idx=0xFFFF(permissionless), format_version=0]
-}
-```
-
-### 8. set_paused
-
-Emergency toggle. When paused, deposit/withdraw/trade are blocked.
-
-## CPI Security
+### CPI Security
 
 Every CPI from Syntx to Percolator uses `invoke_signed` with the vault PDA seeds:
 
@@ -128,18 +113,19 @@ let vault_seeds: &[&[u8]] = &[
     vault.manager.as_ref(),
     &[vault.bump],
 ];
-
 solana_program::program::invoke_signed(&ix, &accounts, &[vault_seeds])?;
 ```
 
-This ensures:
-- Only the vault program can initiate trades/deposits/withdrawals
-- The PDA cannot be forged — it's deterministically derived from the program ID + seeds
-- The manager can call vault instructions, but the vault program controls what the PDA does
+The vault PDA has no private key — only the vault program can sign for it.
+
+### Known Attack Vectors (for auditor)
+
+1. **Share price manipulation**: Deposit large amount → trade → withdraw before price settles. Mitigated by Percolator's warmup period but untested at edge cases.
+2. **CPI reentrancy**: A malicious matcher could re-enter Syntx during a TradeCpi flow. Percolator's ABI validation should prevent this but needs verification.
+3. **Circuit breaker bypass**: If peak_equity is never set (manager doesn't call set_circuit_breaker), the drawdown check is skipped. This is by design but should be documented.
+4. **Fee calculation overflow**: Large equity values × large fee percentages × long time periods could overflow. Uses checked math but edge cases need review.
 
 ## Percolator Account Layout Reference
-
-The slab parser needs these offsets (from `percolator-cli` latest):
 
 ```
 Header:     0..72    (72 bytes)
@@ -147,6 +133,7 @@ Config:     72..584  (512 bytes)
 Engine:     584..    (variable)
   vault:        +0   (U128, 16 bytes)
   insurance:    +16  (U128, 16 bytes)
+  funding_rate: +200 (i64, 8 bytes)
   num_used:     +1120 (u16)
   accounts:     +9336 (array of Account, each 280 bytes)
 
@@ -159,26 +146,14 @@ Account (280 bytes):
   owner:        +208 ([u8; 32])
 ```
 
-## Build
+## Build & Test
 
 ```bash
-# Requires platform-tools v1.53+ for edition2024 support
+# Build (requires platform-tools v1.53+)
 cargo-build-sbf --tools-version v1.53 -- --manifest-path programs/syntx-vault/Cargo.toml
-```
 
-Output: `target/deploy/syntx_vault.so` (342 KB)
-
-## Test
-
-```bash
-# Requires percolator_prog.so in ~/src/percolator-prog/target/deploy/
+# Test (requires percolator_prog.so)
 cargo test -p syntx-vault --test integration
-```
 
-6 tests:
-1. `test_syntx_vault_loads` — binary loads in LiteSVM
-2. `test_percolator_loads` — Percolator binary loads
-3. `test_percolator_init_market` — market creation works
-4. `test_percolator_init_market_and_lp` — LP creation works
-5. `test_syntx_init_vault` — vault PDA created
-6. `test_syntx_full_lifecycle` — init → register → deposit → trade → withdraw
+# 20 tests: lifecycle, fees, access control, input validation, multi-user
+```

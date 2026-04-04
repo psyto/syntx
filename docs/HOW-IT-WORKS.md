@@ -319,22 +319,39 @@ Day 4: Alice withdraws all 100 shares
 |---|---|
 | Manager steals funds | Vault PDA has no private key — withdrawals go to share holders, not manager |
 | Exchange insolvency | Percolator H ratio — formally verified, scales withdrawals if underfunded |
-| Bad trades | Manager can lose money trading, but cannot withdraw more than vault equity |
-| Oracle manipulation | Percolator has oracle confidence checks and circuit breakers |
+| Excessive drawdown | **Circuit breaker** — auto-rejects trades when equity drops beyond configured limit from peak |
+| Malicious CPI callers | **CPI whitelist** — vault manager restricts which programs can call cpi_trade |
+| Oversized CPI trades | **Configurable size limit** — per-vault max trade size for external callers |
+| Bad trades | Performance fee aligns manager incentives with depositors |
+| Oracle manipulation | Percolator has oracle confidence checks and price circuit breakers |
 | Liquidation cascade | Percolator's A/K ADL (auto-deleverage) is deterministic and fair |
 
-### What Does NOT Protect Users
+### Circuit Breakers (Automatic, No Governance Needed)
 
-- **Strategy risk** — if the keeper's strategy loses money, share value goes down
-- **Smart contract bugs** — the vault program needs auditing (planned for Phase 5)
-- **Oracle failure** — if the oracle price is wrong, trades execute at wrong prices
+The vault manager configures protection via `set_circuit_breaker`:
+
+```
+max_drawdown_bps = 2000  (20% max drawdown from peak)
+cpi_whitelist = KaminoProgramId  (only Kamino can CPI trade)
+max_cpi_trade_size = 10000  (max 10K units per CPI trade)
+```
+
+When equity drops 20% from peak, ALL trades (manager and CPI) are automatically rejected. No governance vote, no manual intervention, no keeper action required.
+
+### What Does NOT Protect Users (Honest Assessment)
+
+- **Smart contract bugs in Syntx** — the vault program (15 instructions) is **unaudited**. 20 tests pass, but tests are not a substitute for a professional security audit. An audit is non-negotiable before mainnet.
+- **Keeper failure during extreme volatility** — the keeper has retry logic but no redundancy. If the keeper goes down during a liquidation cascade, the vault cannot rebalance.
+- **Composability risk propagation** — CPI whitelist and size limits reduce but do not eliminate cross-program risk. A vulnerability in a whitelisted program could propagate to Syntx.
+- **Oracle failure** — if the oracle price is wrong, trades execute at wrong prices. Devnet uses centralized push oracle; mainnet would use Pyth.
 
 ### Trust Assumptions
 
-1. **Percolator is correct** — it's formally verified, but formal verification has limits
-2. **The vault program is correct** — it needs a security audit
-3. **The keeper is honest** — it can make bad trades, but can't steal
-4. **The oracle is accurate** — in production, Pyth provides decentralized price feeds
+1. **Percolator is correct** — formally verified with Kani theorem prover, but formal verification has limits
+2. **The vault program is correct** — needs a security audit (~$50-100K)
+3. **The keeper is honest** — can make bad trades, but cannot steal funds
+4. **The oracle is accurate** — production uses Pyth decentralized price feeds
+5. **Circuit breakers are configured** — if the manager doesn't set them, the protection doesn't activate
 
 ---
 

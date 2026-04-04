@@ -37,9 +37,9 @@ Users deposit → Syntx Vault Program → CPI → Percolator Program
                       │                          │
                  Share tokens              Risk engine (H/A/K)
                  Fee accounting            Funding rate
-                 CPI interface             Liquidation
-                      │                    Oracle (Pyth)
-                      ▼
+                 Circuit breakers          Liquidation
+                 CPI interface             Oracle (Pyth)
+                      │
                  Keeper Bot            Composability:
                  (strategies)          Jupiter, Kamino,
                       │                Marginfi, Phoenix
@@ -48,7 +48,7 @@ Users deposit → Syntx Vault Program → CPI → Percolator Program
                  Share price moves
 ```
 
-## Vault Program (13 Instructions)
+## Vault Program (15 Instructions)
 
 | Instruction | Who | Purpose |
 |---|---|---|
@@ -62,8 +62,31 @@ Users deposit → Syntx Vault Program → CPI → Percolator Program
 | `collect_fees` | Manager | Performance + management fees |
 | `update_manager` | Manager | Transfer management |
 | `set_paused` | Manager | Emergency stop |
+| `set_circuit_breaker` | Manager | Configure drawdown limit, CPI whitelist, trade size caps |
 | `get_share_price` | Anyone | On-chain share price oracle |
-| `cpi_trade` | Any program | Public CPI trading interface |
+| `cpi_trade` | Whitelisted program | Public CPI trading interface |
+
+## Security Model
+
+### What protects users
+
+| Threat | Protection |
+|---|---|
+| Manager steals funds | Vault PDA has no private key — withdrawals go to share holders |
+| Exchange insolvency | Percolator H ratio — formally verified |
+| Excessive drawdown | **Circuit breaker** — auto-rejects trades beyond max drawdown from peak |
+| Malicious CPI callers | **CPI whitelist** — vault manager restricts which programs can trade |
+| Oversized CPI trades | **Configurable size limit** — per-vault max trade size |
+| Bad trades | Performance fee aligns manager incentives with depositors |
+
+### What does NOT protect users (honest assessment)
+
+| Risk | Status |
+|---|---|
+| Smart contract bugs in Syntx | **Unaudited.** 20 tests pass but tests != audit. Audit required before mainnet. |
+| Keeper failure during volatility | Keeper has retry logic but no redundancy. Single point of failure. |
+| Oracle manipulation | Depends on Percolator's oracle checks. Authority mode (devnet) is centralized. |
+| Composability risk propagation | CPI whitelist + size limits reduce but don't eliminate cross-program risk. |
 
 ## Composability Recipes
 
@@ -93,27 +116,28 @@ Funding Rate Harvest strategy (ported from Yogi):
 ```
 Every 30 seconds:
   1. Read slab state (position, PnL, funding rate)
-  2. Push oracle price (with retry)
+  2. Push oracle price (with retry, 3 attempts)
   3. Crank funding settlement
   4. Strategy decision:
      - Funding > 0 → SHORT (collect from longs)
      - Funding < 0 → LONG (collect from shorts)
      - Funding ≈ 0 → hold (no edge)
   5. Scale by: vol regime × signal severity → deployment %
+     - low/none: 80%, normal/none: 60%, high/none: 30%, extreme: 0%
 ```
 
 ## Tests (20/20 Passing)
 
-Positive tests: full lifecycle, fees, pause, update manager, share price oracle, multi-user deposits.
+**Positive tests:** full lifecycle, fees, pause, update manager, share price oracle, multi-user deposits, get_share_price.
 
-Negative tests: unauthorized trade, unauthorized pause, unauthorized fees, unauthorized manager update, deposit when paused, deposit over cap, zero deposit, insufficient shares, double init.
+**Negative tests:** unauthorized trade, unauthorized pause, unauthorized fees, unauthorized manager update, deposit when paused, deposit over cap, zero deposit, insufficient shares, double init.
 
 ## Project Structure
 
 ```
 syntx/
 ├── programs/syntx-vault/
-│   ├── src/lib.rs              # Vault program (13 instructions)
+│   ├── src/lib.rs              # Vault program (15 instructions)
 │   └── tests/integration.rs    # 20 LiteSVM tests
 ├── keeper/
 │   ├── src/
@@ -121,13 +145,14 @@ syntx/
 │   │   ├── strategy.ts         # Funding Rate Harvest strategy
 │   │   ├── slab.ts             # Percolator slab parser
 │   │   ├── abi.ts              # Instruction encoders
-│   │   └── setup-devnet.ts     # Devnet deployment
+│   │   ├── setup-devnet.ts     # Devnet deployment
+│   │   └── setup-multi-market.ts # BTC/ETH market deployment
 │   └── devnet-vault.json       # Deployed addresses
 ├── sdk/
 │   └── src/
 │       ├── client.ts           # SyntxClient class
 │       ├── instructions.ts     # TX builders
-│       ├── accounts.ts         # On-chain parsers
+│       ├── accounts.ts         # On-chain parsers + vault discovery
 │       └── constants.ts        # PDA derivation
 ├── app/
 │   └── src/app/
@@ -136,7 +161,7 @@ syntx/
 │       ├── compose/page.tsx    # Composability recipes
 │       ├── earn/page.tsx       # Portfolio view
 │       ├── create/page.tsx     # Vault creation wizard
-│       └── components/         # Nav, Footer, VaultDashboard, etc.
+│       └── components/         # Nav, Footer, VaultDashboard, VaultList, SwapDeposit
 └── docs/
     ├── BUILD-PLAN.md           # Roadmap + current status
     ├── HOW-IT-WORKS.md         # Complete guide
@@ -192,10 +217,11 @@ cd keeper && npx ts-node src/setup-devnet.ts
 | Foundation + Core Vault | Done |
 | Keeper + Devnet | Done |
 | Fees + Multi-vault | Done |
-| SDK + Frontend | Done |
+| SDK + Frontend (6 pages) | Done |
 | Composability (CPI, Jupiter) | Done |
-| Security Audit | Pending (~$50-100K) |
-| SNTX Token | Pending (needs legal) |
+| Circuit Breakers + Security Hardening | Done |
+| Security Audit | Pending (~$50-100K, non-negotiable before mainnet) |
+| SNTX Token | Pending (needs legal counsel) |
 | Mainnet Launch | Pending (after audit) |
 
 See [BUILD-PLAN.md](docs/BUILD-PLAN.md) for details, [HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) for the complete guide.
