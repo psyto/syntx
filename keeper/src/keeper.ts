@@ -11,6 +11,7 @@ import { readFileSync } from "fs";
 import { Config } from "./config";
 import { fetchSlab, parseHeader, parseEngine, getVaultHealth } from "./slab";
 import { disc } from "./abi";
+import { computeTradeDecision, decisionToTradeSize, MarketState } from "./strategy";
 
 function loadKeypair(path: string): Keypair {
   const resolved = path.replace("~", process.env.HOME ?? "");
@@ -25,15 +26,24 @@ function ts(): string {
   return new Date().toISOString();
 }
 
-// Percolator instruction tags
 const PERC_KEEPER_CRANK = 5;
 const PERC_PUSH_ORACLE_PRICE = 17;
+const LP_IDX = 1; // LP account index on the slab
+
+// Engine offsets for funding rate (from percolator-cli)
+const ENGINE_OFF = 584;
+const ENGINE_FUNDING_RATE_OFF = 200; // funding_rate_bps_per_slot_last: i64
+
+function readFundingRate(slabData: Buffer): bigint {
+  return slabData.readBigInt64LE(ENGINE_OFF + ENGINE_FUNDING_RATE_OFF);
+}
 
 export async function runKeeper(config: Config): Promise<void> {
   console.log(`[${ts()}] Syntx Keeper starting...`);
   console.log(`  Slab:     ${config.percolatorSlab.toBase58()}`);
   console.log(`  Vault:    ${config.vaultPda.toBase58()}`);
   console.log(`  Interval: ${config.crankIntervalMs}ms`);
+  console.log(`  Strategy: Funding Rate Harvest\n`);
 
   const connection = new Connection(config.rpcUrl, "confirmed");
   const manager = loadKeypair(config.managerKeypairPath);
@@ -58,85 +68,97 @@ export async function runKeeper(config: Config): Promise<void> {
 async function tick(connection: Connection, config: Config, manager: Keypair): Promise<void> {
   // 1. Read slab state
   const slabData = await fetchSlab(connection, config.percolatorSlab);
-  const header = parseHeader(slabData);
   const engine = parseEngine(slabData);
-
-  console.log(`  Accounts: ${engine.numUsedAccounts} | Vault: ${engine.vault} | Insurance: ${engine.insuranceBalance}`);
+  const fundingRate = readFundingRate(slabData);
 
   const health = getVaultHealth(slabData, config.vaultPda);
-  if (health) {
-    console.log(`  Vault [${health.accountIndex}]: capital=${health.capital} pnl=${health.pnl} pos=${health.positionSize}`);
-  } else {
+  if (!health) {
     console.log("  [!] Vault not found in slab");
     return;
   }
 
-  // 2. Push oracle price (authority mode — we are the oracle authority)
-  const price = 138_000_000; // $138 SOL — in production, fetch from Pyth/Binance
-  const now = Math.floor(Date.now() / 1000);
+  // Compute vault equity (capital + PnL)
+  const equity = health.capital + (health.pnl < 0n ? health.pnl : health.pnl);
+  const sharePrice = equity > 0n ? Number(equity) / 1_000_000 : 0;
 
+  console.log(`  Vault: capital=${health.capital} pnl=${health.pnl} pos=${health.positionSize} equity=${equity}`);
+  console.log(`  Market: funding=${fundingRate} bps/slot | accounts=${engine.numUsedAccounts} | insurance=${engine.insuranceBalance}`);
+  console.log(`  Share price: $${sharePrice.toFixed(6)}`);
+
+  // 2. Push oracle price
+  const price = 138_000_000; // $138 — in production, fetch from Pyth
+  const now = Math.floor(Date.now() / 1000);
   const pushPriceData = Buffer.alloc(17);
   pushPriceData.writeUInt8(PERC_PUSH_ORACLE_PRICE, 0);
   pushPriceData.writeBigUInt64LE(BigInt(price), 1);
   pushPriceData.writeBigInt64LE(BigInt(now), 9);
 
-  const pushIx = new TransactionInstruction({
-    programId: config.percolatorProgramId,
-    keys: [
-      { pubkey: manager.publicKey, isSigner: true, isWritable: false },
-      { pubkey: config.percolatorSlab, isSigner: false, isWritable: true },
-    ],
-    data: pushPriceData,
-  });
+  try {
+    const tx = new Transaction().add(new TransactionInstruction({
+      programId: config.percolatorProgramId,
+      keys: [
+        { pubkey: manager.publicKey, isSigner: true, isWritable: false },
+        { pubkey: config.percolatorSlab, isSigner: false, isWritable: true },
+      ],
+      data: pushPriceData,
+    }));
+    await sendAndConfirmTransaction(connection, tx, [manager]);
+    console.log(`  [oracle] $${price / 1_000_000} pushed`);
+  } catch (err: any) {
+    console.log(`  [oracle] Push failed: ${err?.message?.slice(0, 80) || "unknown"}`);
+  }
 
-  // 3. Permissionless crank (direct to Percolator)
+  // 3. Crank funding
   const crankData = Buffer.alloc(4);
   crankData.writeUInt8(PERC_KEEPER_CRANK, 0);
-  crankData.writeUInt16LE(0xFFFF, 1); // permissionless (u16::MAX)
-  crankData.writeUInt8(0, 3); // format_version = 0
+  crankData.writeUInt16LE(0xFFFF, 1);
+  crankData.writeUInt8(0, 3);
 
-  const crankIx = new TransactionInstruction({
-    programId: config.percolatorProgramId,
-    keys: [
-      { pubkey: manager.publicKey, isSigner: true, isWritable: false },
-      { pubkey: config.percolatorSlab, isSigner: false, isWritable: true },
-      { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
-      { pubkey: config.percolatorSlab, isSigner: false, isWritable: false }, // oracle (dummy, authority mode)
-    ],
-    data: crankData,
-  });
-
-  // Push oracle price
   try {
-    const txPush = new Transaction().add(pushIx);
-    const sig1 = await sendAndConfirmTransaction(connection, txPush, [manager]);
-    console.log(`  [oracle] Price pushed: ${sig1.slice(0, 16)}...`);
+    const tx = new Transaction().add(new TransactionInstruction({
+      programId: config.percolatorProgramId,
+      keys: [
+        { pubkey: manager.publicKey, isSigner: true, isWritable: false },
+        { pubkey: config.percolatorSlab, isSigner: false, isWritable: true },
+        { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
+        { pubkey: config.percolatorSlab, isSigner: false, isWritable: false },
+      ],
+      data: crankData,
+    }));
+    await sendAndConfirmTransaction(connection, tx, [manager]);
+    console.log(`  [crank] OK`);
   } catch (err: any) {
-    const logs = err?.transactionLogs || [];
-    console.log(`  [oracle] Push failed:`);
-    for (const log of logs) console.log(`    ${log}`);
-    if (!logs.length) console.log(`    ${err?.message || "unknown"}`);
+    console.log(`  [crank] Failed: ${err?.message?.slice(0, 80) || "unknown"}`);
   }
 
-  // Crank
-  try {
-    const txCrank = new Transaction().add(crankIx);
-    const sig2 = await sendAndConfirmTransaction(connection, txCrank, [manager]);
-    console.log(`  [crank] OK: ${sig2.slice(0, 16)}...`);
-  } catch (err: any) {
-    const logs = err?.transactionLogs || [];
-    console.log(`  [crank] Failed: ${logs[logs.length - 2] || err?.message || "unknown"}`);
-  }
+  // 4. Strategy decision
+  const marketState: MarketState = {
+    fundingRateBpsPerSlot: fundingRate,
+    vaultCapital: health.capital,
+    vaultPosition: health.positionSize,
+    insuranceBalance: engine.insuranceBalance,
+    numAccounts: engine.numUsedAccounts,
+  };
 
-  // 4. Strategy: open a small position if flat
-  if (health.positionSize === 0n) {
-    // Capital=1000, price=138e6, initial_margin=10%
-    // Max notional = 1000 * 10000 / 1000 (IM bps) = 10000 units notional
-    // Max position = 10000 / 138 ≈ 72 units... use 1 unit to be safe
-    await executeTrade(connection, config, manager, 1, 1n);
+  const decision = computeTradeDecision(marketState);
+  console.log(`  [strategy] ${decision.action}: ${decision.reason}`);
+
+  // 5. Execute trade if needed
+  if (decision.action === "hold") return;
+
+  let tradeSize: bigint;
+  if (decision.action === "close") {
+    // Close by opening opposite position
+    tradeSize = -health.positionSize;
   } else {
-    console.log(`  [strategy] Position open: ${health.positionSize} — holding`);
+    const size = decisionToTradeSize(decision);
+    if (!size) return;
+    tradeSize = size;
   }
+
+  if (tradeSize === 0n) return;
+
+  await executeTrade(connection, config, manager, LP_IDX, tradeSize);
 }
 
 async function executeTrade(
@@ -146,12 +168,10 @@ async function executeTrade(
   lpIdx: number,
   size: bigint,
 ): Promise<void> {
-  // Encode Syntx manager_trade: disc(8) + lp_idx(2) + size(16) = 26 bytes
   const tradeData = Buffer.alloc(26);
   const d = Buffer.from(disc("manager_trade"));
   d.copy(tradeData, 0);
   tradeData.writeUInt16LE(lpIdx, 8);
-  // Write i128 size
   const sizeUnsigned = size < 0n ? (1n << 128n) + size : size;
   tradeData.writeBigUInt64LE(sizeUnsigned & 0xFFFFFFFFFFFFFFFFn, 10);
   tradeData.writeBigUInt64LE(sizeUnsigned >> 64n, 18);
@@ -159,13 +179,13 @@ async function executeTrade(
   const tradeIx = new TransactionInstruction({
     programId: config.syntxProgramId,
     keys: [
-      { pubkey: manager.publicKey, isSigner: true, isWritable: false },   // manager
-      { pubkey: config.vaultPda, isSigner: false, isWritable: false },    // vault_state
-      { pubkey: manager.publicKey, isSigner: true, isWritable: false },   // lp_owner (same as manager)
-      { pubkey: config.percolatorSlab, isSigner: false, isWritable: true }, // percolator_slab
-      { pubkey: config.percolatorSlab, isSigner: false, isWritable: false }, // oracle (authority mode)
-      { pubkey: config.percolatorProgramId, isSigner: false, isWritable: false }, // percolator_program
-      { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false }, // clock
+      { pubkey: manager.publicKey, isSigner: true, isWritable: false },
+      { pubkey: config.vaultPda, isSigner: false, isWritable: false },
+      { pubkey: manager.publicKey, isSigner: true, isWritable: false },
+      { pubkey: config.percolatorSlab, isSigner: false, isWritable: true },
+      { pubkey: config.percolatorSlab, isSigner: false, isWritable: false },
+      { pubkey: config.percolatorProgramId, isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
     ],
     data: tradeData,
   });
@@ -173,11 +193,9 @@ async function executeTrade(
   try {
     const tx = new Transaction().add(tradeIx);
     const sig = await sendAndConfirmTransaction(connection, tx, [manager]);
-    console.log(`  [trade] OK: lp=${lpIdx} size=${size} tx=${sig.slice(0, 16)}...`);
+    console.log(`  [trade] ${size > 0n ? "LONG" : "SHORT"} ${size > 0n ? size : -size} units → ${sig.slice(0, 16)}...`);
   } catch (err: any) {
     const logs = err?.transactionLogs || [];
-    console.log(`  [trade] Failed:`);
-    for (const log of logs) console.log(`    ${log}`);
-    if (!logs.length) console.log(`    ${err?.message || "unknown"}`);
+    console.log(`  [trade] Failed: ${logs[logs.length - 2] || err?.message?.slice(0, 100) || "unknown"}`);
   }
 }

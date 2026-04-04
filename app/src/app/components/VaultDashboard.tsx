@@ -30,6 +30,57 @@ function readU64LE(d: Uint8Array, off: number): bigint {
   return lo | (hi << 32n);
 }
 
+function readI64LE(d: Uint8Array, off: number): bigint {
+  const lo = BigInt(d[off]) | (BigInt(d[off+1]) << 8n) | (BigInt(d[off+2]) << 16n) | (BigInt(d[off+3]) << 24n);
+  const hi = BigInt(d[off+4]) | (BigInt(d[off+5]) << 8n) | (BigInt(d[off+6]) << 16n) | (BigInt(d[off+7]) << 24n);
+  const val = lo | (hi << 32n);
+  return val >= (1n << 63n) ? val - (1n << 64n) : val;
+}
+
+function readU128LE(d: Uint8Array, off: number): bigint {
+  return readU64LE(d, off) | (readU64LE(d, off + 8) << 64n);
+}
+
+function readI128LE(d: Uint8Array, off: number): bigint {
+  const val = readU128LE(d, off);
+  return val >= (1n << 127n) ? val - (1n << 128n) : val;
+}
+
+// Percolator slab layout for reading vault's on-chain equity
+const SLAB_ENGINE_OFF = 584;
+const SLAB_ACCOUNTS_OFF = 9336;
+const SLAB_ACCOUNT_SIZE = 280;
+const SLAB_ACCT_CAPITAL_OFF = 8;   // U128
+const SLAB_ACCT_PNL_OFF = 32;     // i128
+const SLAB_ACCT_POS_OFF = 88;     // i128
+const SLAB_ACCT_ENTRY_OFF = 104;  // u64
+const SLAB_FUNDING_RATE_OFF = 200; // i64
+
+interface PercolatorHealth {
+  capital: bigint;
+  pnl: bigint;
+  position: bigint;
+  entryPrice: bigint;
+  equity: bigint;
+  fundingRate: bigint;
+}
+
+function readPercolatorHealth(slabData: Uint8Array, accountIdx: number): PercolatorHealth | null {
+  const base = SLAB_ENGINE_OFF + SLAB_ACCOUNTS_OFF + accountIdx * SLAB_ACCOUNT_SIZE;
+  if (base + SLAB_ACCOUNT_SIZE > slabData.length) return null;
+
+  const capital = readU128LE(slabData, base + SLAB_ACCT_CAPITAL_OFF);
+  const pnl = readI128LE(slabData, base + SLAB_ACCT_PNL_OFF);
+  const position = readI128LE(slabData, base + SLAB_ACCT_POS_OFF);
+  const entryPrice = readU64LE(slabData, base + SLAB_ACCT_ENTRY_OFF);
+  const fundingRate = readI64LE(slabData, SLAB_ENGINE_OFF + SLAB_FUNDING_RATE_OFF);
+
+  // Equity = capital + realized PnL (unrealized PnL requires oracle price)
+  const equity = BigInt(capital) + pnl;
+
+  return { capital, pnl, position, entryPrice, equity, fundingRate };
+}
+
 interface VaultData {
   manager: string;
   collateralMint: string;
@@ -74,6 +125,7 @@ export default function VaultDashboard({ vaultPda }: { vaultPda: string }) {
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
   const [vault, setVault] = useState<VaultData | null>(null);
+  const [percHealth, setPercHealth] = useState<PercolatorHealth | null>(null);
   const [userShares, setUserShares] = useState<bigint>(0n);
   const [loading, setLoading] = useState(true);
   const [depositAmt, setDepositAmt] = useState("");
@@ -88,6 +140,15 @@ export default function VaultDashboard({ vaultPda }: { vaultPda: string }) {
       if (!info) return;
       const data = parseVaultData(new Uint8Array(info.data));
       setVault(data);
+
+      // Read Percolator slab for real equity
+      try {
+        const slabInfo = await connection.getAccountInfo(new PublicKey(data.slab));
+        if (slabInfo) {
+          const health = readPercolatorHealth(new Uint8Array(slabInfo.data), data.userIdx);
+          setPercHealth(health);
+        }
+      } catch { setPercHealth(null); }
 
       if (publicKey) {
         try {
@@ -121,8 +182,10 @@ export default function VaultDashboard({ vaultPda }: { vaultPda: string }) {
 
   if (!vault) return <div className="text-[var(--text-dim)]">Vault not found</div>;
 
-  const sharePrice = vault.totalShares > 0n ? Number(vault.totalDeposits) / Number(vault.totalShares) : 1.0;
-  const userValue = vault.totalShares > 0n ? Number(userShares * vault.totalDeposits / vault.totalShares) / 1_000_000 : 0;
+  // Use Percolator equity if available, otherwise fall back to totalDeposits
+  const vaultEquity = percHealth ? percHealth.equity : vault.totalDeposits;
+  const sharePrice = vault.totalShares > 0n ? Number(vaultEquity) / Number(vault.totalShares) : 1.0;
+  const userValue = vault.totalShares > 0n ? Number(userShares * vaultEquity / vault.totalShares) / 1_000_000 : 0;
 
   const handleDeposit = async () => {
     if (!depositAmt || !publicKey) return;
@@ -262,9 +325,9 @@ export default function VaultDashboard({ vaultPda }: { vaultPda: string }) {
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px] bg-[var(--border)] rounded-xl overflow-hidden">
         <Stat label="Share Price" value={`$${sharePrice.toFixed(6)}`} />
-        <Stat label="TVL" value={`${(Number(vault.totalDeposits) / 1_000_000).toFixed(2)}`} />
-        <Stat label="Shares Outstanding" value={vault.totalShares.toLocaleString()} />
-        <Stat label="Status" value={vault.paused ? "Paused" : "Active"} accent={vault.paused ? "var(--red)" : "var(--green)"} />
+        <Stat label="Vault Equity" value={`${(Number(vaultEquity) / 1_000_000).toFixed(2)}`} />
+        <Stat label="Position" value={percHealth ? (percHealth.position === 0n ? "Flat" : `${percHealth.position > 0n ? "+" : ""}${percHealth.position}`) : "—"} accent={percHealth && percHealth.position !== 0n ? (percHealth.position > 0n ? "var(--green)" : "var(--red)") : undefined} />
+        <Stat label="Funding Rate" value={percHealth ? `${percHealth.fundingRate} bps/slot` : "—"} accent={percHealth && percHealth.fundingRate > 0n ? "var(--green)" : percHealth && percHealth.fundingRate < 0n ? "var(--red)" : undefined} />
       </div>
 
       {/* User + Actions */}

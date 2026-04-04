@@ -2,7 +2,22 @@
 
 import { useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey } from "@solana/web3.js";
+import {
+  PublicKey,
+  Transaction,
+  TransactionInstruction,
+  SystemProgram,
+  Keypair,
+  SYSVAR_CLOCK_PUBKEY,
+} from "@solana/web3.js";
+import {
+  TOKEN_PROGRAM_ID,
+  createInitializeMintInstruction,
+  getMinimumBalanceForRentExemptMint,
+  MINT_SIZE,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+} from "@solana/spl-token";
 import dynamic from "next/dynamic";
 
 const WalletMultiButton = dynamic(
@@ -19,9 +34,22 @@ const steps = [
   { num: 4, title: "Deploy" },
 ];
 
+// Anchor discriminator
+function discCreate(name: string): Uint8Array {
+  const crypto = require("crypto");
+  const hash = crypto.createHash("sha256").update(`global:${name}`).digest();
+  return new Uint8Array(hash.subarray(0, 8));
+}
+
 export default function CreatePage() {
   const { publicKey } = useWallet();
+  const { connection } = useConnection();
+  const { sendTransaction } = useWallet();
   const [step, setStep] = useState(1);
+  const [deploying, setDeploying] = useState(false);
+  const [deployStatus, setDeployStatus] = useState<string | null>(null);
+  const [deployError, setDeployError] = useState<string | null>(null);
+  const [deployedVault, setDeployedVault] = useState<string | null>(null);
   const [config, setConfig] = useState({
     slab: "",
     percolatorProgram: "Edq18N2pdT3Sz9EukbZe4YsQkvmxvmmkUL1KHpv96xJF",
@@ -47,6 +75,125 @@ export default function CreatePage() {
         } catch { return null; }
       })()
     : null;
+
+  const handleDeploy = async () => {
+    if (!publicKey || !sendTransaction || !config.slab || !config.collateralMint) return;
+    setDeploying(true); setDeployError(null); setDeployStatus(null);
+
+    try {
+      const mint = new PublicKey(config.collateralMint);
+      const slabPk = new PublicKey(config.slab);
+      const percPk = new PublicKey(config.percolatorProgram);
+
+      const [vaultPdaPk] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), mint.toBuffer(), publicKey.toBuffer()],
+        SYNTX_PROGRAM_ID,
+      );
+
+      // TX 1: Create share mint with vault PDA as authority
+      setDeployStatus("Creating share mint (TX 1/3)...");
+      const shareMintKeypair = Keypair.generate();
+      const lamports = await getMinimumBalanceForRentExemptMint(connection);
+
+      const tx1 = new Transaction().add(
+        SystemProgram.createAccount({
+          fromPubkey: publicKey,
+          newAccountPubkey: shareMintKeypair.publicKey,
+          space: MINT_SIZE,
+          lamports,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeMintInstruction(
+          shareMintKeypair.publicKey,
+          6, // decimals
+          vaultPdaPk, // mint authority = vault PDA
+          null, // no freeze authority
+        ),
+      );
+      const sig1 = await sendTransaction(tx1, connection, { signers: [shareMintKeypair] });
+      await connection.confirmTransaction(sig1, "confirmed");
+
+      // Create vault collateral ATA
+      const vaultColAta = await getAssociatedTokenAddress(mint, vaultPdaPk, true);
+      const tx1b = new Transaction().add(
+        createAssociatedTokenAccountInstruction(publicKey, vaultColAta, vaultPdaPk, mint),
+      );
+      try {
+        const sig1b = await sendTransaction(tx1b, connection);
+        await connection.confirmTransaction(sig1b, "confirmed");
+      } catch { /* ATA may already exist */ }
+
+      // TX 2: InitVault
+      setDeployStatus("Initializing vault (TX 2/3)...");
+      const perfBps = Math.floor(parseFloat(config.perfFeeBps) * 100);
+      const mgmtBps = Math.floor(parseFloat(config.mgmtFeeBps) * 100);
+      const cap = BigInt(config.depositCap || "0");
+
+      const initData = new Uint8Array(8 + 2 + 2 + 8);
+      initData.set(discCreate("init_vault"), 0);
+      new DataView(initData.buffer).setUint16(8, perfBps, true);
+      new DataView(initData.buffer).setUint16(10, mgmtBps, true);
+      new DataView(initData.buffer).setBigUint64(12, cap, true);
+
+      const tx2 = new Transaction().add(
+        new TransactionInstruction({
+          programId: SYNTX_PROGRAM_ID,
+          keys: [
+            { pubkey: publicKey, isSigner: true, isWritable: true },
+            { pubkey: vaultPdaPk, isSigner: false, isWritable: true },
+            { pubkey: mint, isSigner: false, isWritable: false },
+            { pubkey: shareMintKeypair.publicKey, isSigner: false, isWritable: false },
+            { pubkey: slabPk, isSigner: false, isWritable: false },
+            { pubkey: percPk, isSigner: false, isWritable: false },
+            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          ],
+          data: initData as any,
+        }),
+      );
+      const sig2 = await sendTransaction(tx2, connection);
+      await connection.confirmTransaction(sig2, "confirmed");
+
+      // TX 3: RegisterOnPercolator
+      setDeployStatus("Registering on Percolator (TX 3/3)...");
+      const [percVaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), slabPk.toBuffer()], percPk,
+      );
+      const percVaultAta = await getAssociatedTokenAddress(mint, percVaultPda, true);
+
+      const regData = new Uint8Array(16);
+      regData.set(discCreate("register_on_percolator"), 0);
+      // fee_payment = 0 (or minimal)
+      new DataView(regData.buffer).setBigUint64(8, 0n, true);
+
+      const tx3 = new Transaction().add(
+        new TransactionInstruction({
+          programId: SYNTX_PROGRAM_ID,
+          keys: [
+            { pubkey: publicKey, isSigner: true, isWritable: false },
+            { pubkey: vaultPdaPk, isSigner: false, isWritable: true },
+            { pubkey: vaultColAta, isSigner: false, isWritable: true },
+            { pubkey: slabPk, isSigner: false, isWritable: true },
+            { pubkey: percVaultAta, isSigner: false, isWritable: true },
+            { pubkey: percPk, isSigner: false, isWritable: false },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
+          ],
+          data: regData as any,
+        }),
+      );
+      const sig3 = await sendTransaction(tx3, connection);
+      await connection.confirmTransaction(sig3, "confirmed");
+
+      setDeployedVault(vaultPdaPk.toBase58());
+      setDeployStatus(null);
+    } catch (e: any) {
+      console.error("Deploy error:", e);
+      setDeployError(e?.message?.slice(0, 200) || "Deployment failed");
+      setDeployStatus(null);
+    } finally {
+      setDeploying(false);
+    }
+  };
 
   return (
     <div className="max-w-[800px] mx-auto px-6 py-10">
@@ -204,11 +351,23 @@ export default function CreatePage() {
                   <ReviewRow label="Manager" value={publicKey.toBase58().slice(0, 12) + "..."} />
                 </div>
 
-                <div className="bg-yellow-950 border border-yellow-800 rounded-lg p-4 text-xs text-yellow-300">
-                  Vault creation requires CLI deployment (share mint creation + InitVault + RegisterOnPercolator).
-                  <br /><br />
-                  Run: <code className="bg-[var(--bg)] px-1.5 py-0.5 rounded">cd keeper && npx ts-node src/setup-devnet.ts</code>
-                </div>
+                {deployStatus && (
+                  <div className="bg-blue-950 border border-blue-800 rounded-lg p-3 text-xs font-mono text-[var(--primary)]">
+                    {deployStatus}
+                  </div>
+                )}
+                {deployError && (
+                  <div className="bg-red-950 border border-red-800 rounded-lg p-3 text-xs font-mono text-[var(--red)]">
+                    {deployError}
+                  </div>
+                )}
+                {deployedVault && (
+                  <div className="bg-green-950 border border-green-800 rounded-lg p-4 text-xs text-[var(--green)]">
+                    Vault deployed! PDA: <span className="font-mono">{deployedVault}</span>
+                    <br />
+                    <a href="/vaults" className="underline mt-2 inline-block">View in Vault Marketplace</a>
+                  </div>
+                )}
               </>
             )}
 
@@ -230,10 +389,11 @@ export default function CreatePage() {
                 </button>
               ) : (
                 <button
-                  disabled
-                  className="px-6 py-2 text-sm bg-[var(--primary)] rounded-lg font-medium opacity-50"
+                  onClick={handleDeploy}
+                  disabled={deploying || !config.slab || !config.collateralMint || !!deployedVault}
+                  className="px-6 py-2 text-sm bg-[var(--primary)] hover:bg-[var(--primary-hover)] disabled:opacity-50 rounded-lg font-medium transition"
                 >
-                  Deploy (CLI required)
+                  {deploying ? "Deploying..." : deployedVault ? "Deployed" : "Deploy Vault"}
                 </button>
               )}
             </div>
