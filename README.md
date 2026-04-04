@@ -224,7 +224,7 @@ cd keeper && npx ts-node src/setup-devnet.ts
 | SNTX Token | Pending (needs legal counsel) |
 | Mainnet Launch | Pending (after audit) |
 
-See [BUILD-PLAN.md](docs/BUILD-PLAN.md) for details, [HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) for the complete guide.
+See [BUILD-PLAN.md](docs/BUILD-PLAN.md) for details, [HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) for the complete guide, and [PERCOLATOR-SPEC-REFERENCE.md](docs/PERCOLATOR-SPEC-REFERENCE.md) for Percolator's risk engine mechanics.
 
 ## License
 

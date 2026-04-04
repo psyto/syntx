@@ -71,9 +71,15 @@ h = min(Residual, PNL_matured_pos_tot) / PNL_matured_pos_tot
 
 **No rankings, no queue priority, no first-come advantage.** The floor rounding is conservative — the sum of all effective PnL never exceeds what exists in the vault.
 
-**Warmup defense:** Fresh profit sits in a per-account reserve and converts to released (matured) profit through a warmup period. An attacker who spikes a price sees their unrealized gain locked until the warmup passes — this is the core oracle-manipulation defense.
+**Warmup defense:** Fresh profit sits in a per-account reserve `R_i` and converts to released (matured) profit through a warmup period `T`. An attacker who spikes a price sees their unrealized gain locked until the warmup passes — this is the core oracle-manipulation defense. On the generating account, full local PnL supports maintenance margin (prevents liquidation), but reserved profit does NOT count for initial margin or withdrawals.
 
 **Flat accounts are always protected** — H only gates profit extraction, never touches deposited capital.
+
+**Recurring maintenance fees:** Percolator charges a lazy per-account fee of `maintenance_fee_per_slot * elapsed_slots`. This is realized when the account is touched. It affects the vault's capital and fee debt but not PnL or positions.
+
+**Configuration immutability:** All market parameters (margin, fees, warmup, insurance floor) are immutable after market initialization. No runtime update instruction exists in v12.1.0.
+
+For the complete spec, see [PERCOLATOR-SPEC-REFERENCE.md](PERCOLATOR-SPEC-REFERENCE.md) or the [official spec](https://github.com/aeyakovenko/percolator/blob/master/spec.md).
 
 ### A/K (Lazy Side Indices) — Fair Overhang Clearing
 
