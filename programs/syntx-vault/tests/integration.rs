@@ -21,10 +21,11 @@ use solana_sdk::{
 use spl_token::state::{Account as TokenAccount, AccountState, Mint};
 use std::path::PathBuf;
 
-// Percolator constants (test feature: MAX_ACCOUNTS=64)
-// Build percolator-prog with: cargo-build-sbf --tools-version v1.53 -- --features test
-const SLAB_LEN: usize = 17392;
-const MAX_ACCOUNTS: usize = 64;
+// Percolator constants (production: MAX_ACCOUNTS=4096)
+// Build percolator-prog with: cargo-build-sbf --tools-version v1.53
+// Use a large initial value — will be corrected by error log if wrong
+const SLAB_LEN: usize = 1_058_152;
+const MAX_ACCOUNTS: usize = 4096;
 const TEST_FEED_ID: [u8; 32] = [0xABu8; 32];
 const PYTH_RECEIVER_PROGRAM_ID: Pubkey = Pubkey::new_from_array([
     0x0c, 0xb7, 0xfa, 0xbb, 0x52, 0xf7, 0xa6, 0x48,
@@ -221,8 +222,8 @@ impl TestEnv {
     fn new() -> Self {
         let mut svm = LiteSVM::new();
 
-        // Load programs
-        let syntx_id = Pubkey::new_unique();
+        // Load programs — syntx must be at its declared ID (Anchor checks)
+        let syntx_id: Pubkey = "53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V".parse().unwrap();
         let perc_id = Pubkey::new_unique();
         let syntx_bytes = std::fs::read(syntx_program_path()).expect("Failed to read syntx_vault.so");
         let perc_bytes = std::fs::read(percolator_program_path()).expect("Failed to read percolator_prog.so");
@@ -381,6 +382,64 @@ impl TestEnv {
 // Tests
 // =============================================================================
 
+// =============================================================================
+// Syntx instruction helpers
+// =============================================================================
+
+/// Anchor discriminator: sha256("global:<name>")[..8]
+fn disc(name: &str) -> Vec<u8> {
+    let full = format!("global:{}", name);
+    let hash = solana_sdk::hash::hash(full.as_bytes());
+    hash.to_bytes()[..8].to_vec()
+}
+
+fn encode_syntx_init_vault(
+    performance_fee_bps: u16,
+    management_fee_bps: u16,
+    deposit_cap: u64,
+) -> Vec<u8> {
+    let mut data = disc("init_vault");
+    data.extend_from_slice(&performance_fee_bps.to_le_bytes());
+    data.extend_from_slice(&management_fee_bps.to_le_bytes());
+    data.extend_from_slice(&deposit_cap.to_le_bytes());
+    data
+}
+
+fn encode_syntx_register(initial_fee_payment: u64) -> Vec<u8> {
+    let mut data = disc("register_on_percolator");
+    data.extend_from_slice(&initial_fee_payment.to_le_bytes());
+    data
+}
+
+fn encode_syntx_set_idx(user_idx: u16) -> Vec<u8> {
+    let mut data = disc("set_percolator_idx");
+    data.extend_from_slice(&user_idx.to_le_bytes());
+    data
+}
+
+fn encode_syntx_deposit(amount: u64) -> Vec<u8> {
+    let mut data = disc("deposit");
+    data.extend_from_slice(&amount.to_le_bytes());
+    data
+}
+
+fn encode_syntx_withdraw(shares_to_burn: u64) -> Vec<u8> {
+    let mut data = disc("withdraw");
+    data.extend_from_slice(&shares_to_burn.to_le_bytes());
+    data
+}
+
+fn encode_syntx_manager_trade(lp_idx: u16, size: i128) -> Vec<u8> {
+    let mut data = disc("manager_trade");
+    data.extend_from_slice(&lp_idx.to_le_bytes());
+    data.extend_from_slice(&size.to_le_bytes());
+    data
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
 #[test]
 fn test_syntx_vault_loads() {
     let mut svm = LiteSVM::new();
@@ -414,4 +473,215 @@ fn test_percolator_init_market_and_lp() {
     let lp_owner = Keypair::new();
     let lp_idx = env.init_percolator_lp(&lp_owner);
     assert_eq!(lp_idx, 0);
+}
+
+#[test]
+fn test_syntx_init_vault() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+
+    let manager = &env.payer;
+    let (vault_pda, _bump) = env.vault_pda(&manager.pubkey());
+
+    // Pre-create share mint with vault PDA as authority
+    let share_mint = Pubkey::new_unique();
+    env.svm.set_account(share_mint, Account {
+        lamports: 1_000_000,
+        data: make_mint_data_with_authority(&vault_pda),
+        owner: spl_token::ID,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),       // manager (signer, payer)
+            AccountMeta::new(vault_pda, false),             // vault_state (init PDA)
+            AccountMeta::new_readonly(env.collateral_mint, false), // collateral_mint
+            AccountMeta::new_readonly(share_mint, false),   // share_mint
+            AccountMeta::new_readonly(env.slab, false),     // percolator_slab
+            AccountMeta::new_readonly(env.perc_id, false),  // percolator_program
+            AccountMeta::new_readonly(solana_sdk::system_program::ID, false), // system_program
+        ],
+        data: encode_syntx_init_vault(2000, 200, 1_000_000_000), // 20% perf, 2% mgmt, 1000 USDC cap
+    };
+
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("Syntx init_vault failed");
+
+    // Verify vault state was created
+    let vault_account = env.svm.get_account(&vault_pda).expect("Vault PDA should exist");
+    assert_eq!(vault_account.owner, env.syntx_id);
+    assert!(vault_account.data.len() > 0);
+}
+
+#[test]
+fn test_syntx_full_lifecycle() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+
+    let manager = &env.payer;
+    let manager_pubkey = manager.pubkey();
+    let (vault_pda, _bump) = env.vault_pda(&manager_pubkey);
+
+    // --- Step 1: Create share mint with vault PDA as authority ---
+    let share_mint = Pubkey::new_unique();
+    env.svm.set_account(share_mint, Account {
+        lamports: 1_000_000,
+        data: make_mint_data_with_authority(&vault_pda),
+        owner: spl_token::ID,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+
+    // --- Step 2: InitVault ---
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager_pubkey, true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new_readonly(env.collateral_mint, false),
+            AccountMeta::new_readonly(share_mint, false),
+            AccountMeta::new_readonly(env.slab, false),
+            AccountMeta::new_readonly(env.perc_id, false),
+            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+        ],
+        data: encode_syntx_init_vault(2000, 200, 1_000_000_000),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager_pubkey), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("init_vault failed");
+
+    // --- Step 3: Create vault's collateral token account ---
+    let vault_collateral = Pubkey::new_unique();
+    env.svm.set_account(vault_collateral, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &vault_pda, 0),
+        owner: spl_token::ID,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+
+    // --- Step 4: RegisterOnPercolator (CPI → Percolator InitUser) ---
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager_pubkey, true),         // manager
+            AccountMeta::new(vault_pda, false),             // vault_state
+            AccountMeta::new(vault_collateral, false),      // vault_collateral
+            AccountMeta::new(env.slab, false),              // percolator_slab
+            AccountMeta::new(env.perc_vault, false),        // percolator_vault
+            AccountMeta::new_readonly(env.perc_id, false),  // percolator_program
+            AccountMeta::new_readonly(spl_token::ID, false), // token_program
+        ],
+        data: encode_syntx_register(0), // 0 fee payment
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager_pubkey), &[manager], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    match &result {
+        Ok(_) => println!("RegisterOnPercolator succeeded"),
+        Err(e) => {
+            println!("RegisterOnPercolator failed: {:?}", e);
+            for log in &e.meta.logs {
+                println!("  LOG: {}", log);
+            }
+        }
+    }
+    result.expect("register_on_percolator failed");
+
+    // --- Step 5: Set Percolator user index ---
+    // The vault was registered as the first user after LP, so index depends on setup
+    // In our test, we didn't create any LP, so vault user_idx = 0
+    let vault_user_idx: u16 = 0;
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager_pubkey, true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data: encode_syntx_set_idx(vault_user_idx),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager_pubkey), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("set_percolator_idx failed");
+
+    // --- Step 6: Create a user who will deposit ---
+    let user = Keypair::new();
+    env.svm.airdrop(&user.pubkey(), 10_000_000_000).unwrap();
+
+    // User's USDC token account (with 1000 USDC = 1_000_000_000 lamports at 6 decimals)
+    let deposit_amount: u64 = 100_000_000; // 100 USDC
+    let user_collateral = Pubkey::new_unique();
+    env.svm.set_account(user_collateral, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &user.pubkey(), deposit_amount),
+        owner: spl_token::ID,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+
+    // User's share token account (empty)
+    let user_shares = Pubkey::new_unique();
+    env.svm.set_account(user_shares, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&share_mint, &user.pubkey(), 0),
+        owner: spl_token::ID,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+
+    // --- Step 7: Deposit ---
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(user.pubkey(), true),          // user
+            AccountMeta::new(vault_pda, false),             // vault_state
+            AccountMeta::new(user_collateral, false),       // user_collateral
+            AccountMeta::new(user_shares, false),           // user_shares
+            AccountMeta::new(vault_collateral, false),      // vault_collateral
+            AccountMeta::new(share_mint, false),            // share_mint
+            AccountMeta::new(env.slab, false),              // percolator_slab
+            AccountMeta::new(env.perc_vault, false),        // percolator_vault
+            AccountMeta::new_readonly(env.perc_id, false),  // percolator_program
+            AccountMeta::new_readonly(spl_token::ID, false), // token_program
+            AccountMeta::new_readonly(sysvar::clock::ID, false), // clock
+        ],
+        data: encode_syntx_deposit(deposit_amount),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&user.pubkey()), &[&user], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    match &result {
+        Ok(_) => println!("Deposit succeeded"),
+        Err(e) => {
+            println!("Deposit failed: {:?}", e);
+            for log in &e.meta.logs {
+                println!("  LOG: {}", log);
+            }
+        }
+    }
+    result.expect("deposit failed");
+
+    // Verify shares were minted
+    let shares_account = env.svm.get_account(&user_shares).unwrap();
+    let shares_state = TokenAccount::unpack(&shares_account.data).unwrap();
+    assert_eq!(shares_state.amount, deposit_amount, "First deposit should mint 1:1 shares");
+
+    // Verify USDC was transferred
+    let user_col_account = env.svm.get_account(&user_collateral).unwrap();
+    let user_col_state = TokenAccount::unpack(&user_col_account.data).unwrap();
+    assert_eq!(user_col_state.amount, 0, "User should have 0 USDC after deposit");
+
+    println!("=== Full lifecycle test passed ===");
+    println!("  Vault initialized on Percolator");
+    println!("  User deposited {} USDC", deposit_amount);
+    println!("  User received {} shares", deposit_amount);
 }
