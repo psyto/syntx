@@ -1,288 +1,204 @@
-# Syntx — Composable Perp DEX on Solana
+# Syntx — Composable Perp Vaults on Solana
 
-Syntx is a vault-native perpetual futures protocol on Solana. It adds a composable vault layer on top of [Percolator](https://github.com/aeyakovenko/percolator), the formally-verified perp risk engine built by Solana co-founder Anatoly Yakovenko.
+Syntx is a permissionless vault protocol for perpetual futures on Solana. It adds a composable vault layer on top of [Percolator](https://github.com/aeyakovenko/percolator), the formally-verified perp risk engine built by Solana co-founder Anatoly Yakovenko.
+
+**Live on devnet. Keeper running. Deposit and withdraw from the browser.**
 
 ## The Problem
 
-After the Drift Protocol exploit (April 1, 2026, $285M lost), Solana has no composable perpetual futures layer. Jupiter's perps are oracle-AMM (unsuitable for programmatic strategies). Phoenix, Bulk, and Bullet are months from launch. 20+ protocols that depended on Drift for hedging, delta-neutral strategies, and vault composability have nowhere to go.
+After the Drift Protocol exploit (April 1, 2026, $285M lost), Solana has no composable perpetual futures layer. Jupiter's perps are oracle-AMM (unsuitable for programmatic strategies). Phoenix, Bulk, and Bullet are months from launch. 20+ protocols that depended on Drift have nowhere to go.
 
 ## What Syntx Does
 
-Syntx is a **vault program** that sits on top of Percolator. It enables:
+Anyone can create a **strategy vault** that trades perps on Percolator:
 
-1. **Users** deposit collateral (USDC) into a vault and receive share tokens
-2. A **keeper** (strategy manager) trades on Percolator using the vault's capital
-3. Users withdraw by burning shares — they get back their proportional share of vault equity (capital + PnL)
+1. **Vault managers** create vaults, set fees, run keeper strategies
+2. **Users** deposit collateral, receive share tokens proportional to vault equity
+3. **Keepers** trade on Percolator using the vault's capital (funding rate harvest, delta-neutral, market making)
+4. **Other protocols** compose with Syntx via CPI — atomic hedging, leveraged yield, treasury management
 
-Think of it as a hedge fund structure: users are LPs, the keeper is the fund manager, and Percolator is the exchange.
+Think of it as a **composable hedge fund infrastructure** — Percolator is the exchange, Syntx is the vault layer.
 
-## How It Works
+## Why Composable Matters
 
-### The Two Programs
+Percolator Launch creates single-asset perp markets. Syntx creates composable strategy vaults that interact with the entire Solana DeFi stack.
 
-There are two Solana programs involved:
+| Purpose-built chains (Hyperliquid) | Syntx on Solana |
+|---|---|
+| Perp position is isolated | Perp position composes with lending, spot, LSTs |
+| Need bridges for cross-protocol | Atomic in one transaction via CPI |
+| Can't use position as collateral | Vault shares are SPL tokens — usable anywhere |
+| Integration needs bridges + time | Any program calls `cpi_trade` in the same block |
 
-**Percolator** (by Anatoly Yakovenko) — the perp exchange engine:
-- Manages trading accounts, positions, collateral
-- Executes trades between users and LPs
-- Handles funding rates, liquidations, insurance
-- Formally verified risk engine (no user can withdraw more than exists)
-
-**Syntx Vault** (this repo) — the vault layer on top:
-- Manages deposits, withdrawals, share tokens
-- Authorizes the keeper to trade using vault capital
-- Tracks fees (performance + management)
-
-### The Vault PDA Pattern
-
-This is the key architectural concept:
+## Architecture
 
 ```
-┌─────────────────────────────────┐
-│       Syntx Vault Program       │
-│                                 │
-│  VaultState PDA                 │
-│  ├── manager: keeper's pubkey   │
-│  ├── share_mint: share token    │
-│  ├── collateral_mint: USDC      │
-│  ├── percolator_slab: market    │
-│  └── percolator_user_idx: 0     │
-│                                 │
-│  This PDA "owns" a Percolator   │
-│  account. Only the vault        │
-│  program can sign for it.       │
-└──────────────┬──────────────────┘
-               │
-               │  CPI (Cross-Program Invocation)
-               │  vault PDA signs via invoke_signed
-               │
-┌──────────────▼──────────────────┐
-│      Percolator Program         │
-│                                 │
-│  Account[0]                     │
-│  ├── owner: vault PDA           │
-│  ├── capital: 999               │
-│  ├── position: +1               │
-│  └── pnl: 0                    │
-│                                 │
-│  The vault PDA is the "user"    │
-│  on Percolator. It can trade,   │
-│  deposit, and withdraw.         │
-└─────────────────────────────────┘
+Users deposit → Syntx Vault Program → CPI → Percolator Program
+                      │                          │
+                 Share tokens              Risk engine (H/A/K)
+                 Fee accounting            Funding rate
+                 CPI interface             Liquidation
+                      │                    Oracle (Pyth)
+                      ▼
+                 Keeper Bot            Composability:
+                 (strategies)          Jupiter, Kamino,
+                      │                Marginfi, Phoenix
+                      ▼
+                 Trading PnL →
+                 Share price moves
 ```
 
-**Why this matters:** The vault PDA is a program-derived address. No single person holds its private key. Only the Syntx vault program can sign transactions on its behalf (via `invoke_signed`). This means:
+## Vault Program (13 Instructions)
 
-- The keeper (manager) can trade, but cannot steal funds — withdrawals go to share holders
-- Users can deposit/withdraw, but cannot trade — only the keeper can
-- The Percolator risk engine protects against insolvency — the H ratio ensures no one withdraws more than exists
-
-### Transaction Flow
-
-**Deposit:**
-```
-User sends USDC → Syntx Vault Program
-  → transfers USDC to vault token account
-  → CPI: Percolator DepositCollateral (vault PDA signs)
-  → mints share tokens to user
-```
-
-**Trade (keeper):**
-```
-Keeper calls manager_trade → Syntx Vault Program
-  → verifies keeper is the authorized manager
-  → CPI: Percolator TradeNoCpi (vault PDA signs as user)
-  → Percolator executes trade against LP
-  → position updated on-chain
-```
-
-**Withdraw:**
-```
-User burns share tokens → Syntx Vault Program
-  → CPI: Percolator WithdrawCollateral (vault PDA signs)
-  → transfers USDC back to user
-```
-
-## Vault Instructions
-
-The Syntx vault program has 8 instructions:
-
-| Instruction | Who calls it | What it does |
+| Instruction | Who | Purpose |
 |---|---|---|
-| `init_vault` | Manager | Creates vault state PDA, records config |
-| `register_on_percolator` | Manager | CPI to Percolator InitUser — creates the vault's trading account |
-| `set_percolator_idx` | Manager | Stores the assigned account index from Percolator |
-| `deposit` | Any user | Accept USDC, CPI deposit to Percolator, mint shares |
-| `withdraw` | Any user | Burn shares, CPI withdraw from Percolator, return USDC |
-| `manager_trade` | Manager only | CPI to Percolator TradeNoCpi — open/close positions |
-| `manager_crank` | Manager only | CPI to Percolator KeeperCrank — settle funding |
-| `set_paused` | Manager only | Emergency pause deposits/withdrawals |
+| `init_vault` | Anyone | Create a new vault |
+| `register_on_percolator` | Manager | Register vault on Percolator market |
+| `set_percolator_idx` | Manager | Store account index |
+| `deposit` | Any user | Deposit collateral, receive shares |
+| `withdraw` | Any user | Burn shares, get collateral back |
+| `manager_trade` | Manager | Execute trades via vault PDA |
+| `manager_crank` | Manager | Settle funding payments |
+| `collect_fees` | Manager | Performance + management fees |
+| `update_manager` | Manager | Transfer management |
+| `set_paused` | Manager | Emergency stop |
+| `get_share_price` | Anyone | On-chain share price oracle |
+| `cpi_trade` | Any program | Public CPI trading interface |
 
-## Percolator Concepts
+## Composability Recipes
 
-To understand Syntx, you need to understand a few Percolator concepts:
+| Recipe | Protocols | Status |
+|---|---|---|
+| Any Token → Vault | Jupiter + Syntx | Live |
+| One-Click Delta Neutral | Jupiter + Syntx + Percolator | Coming soon |
+| Leveraged Vault Yield | Syntx + Kamino | Coming soon |
+| Protocol Treasury Hedge | Squads + Syntx | Coming soon |
+| Lending Auto-Hedge | Kamino CPI → Syntx | Coming soon |
+| Spot + Perp Arbitrage | Phoenix + Syntx | Coming soon |
 
-### Slab
-A **slab** is a single Percolator market. It's a large on-chain account (~1.1MB) that contains:
-- Market configuration (collateral mint, oracle, fee parameters)
-- Risk engine state (funding rate, insurance fund, aggregates)
-- Up to 4096 trading accounts (users + LPs)
+## Frontend (6 Pages)
 
-Each slab is one market (e.g., SOL-PERP).
-
-### Accounts (Users and LPs)
-Inside a slab, there are **accounts**:
-- **User accounts** — hold collateral, can have positions (long or short)
-- **LP accounts** — provide liquidity, take the other side of user trades
-
-The Syntx vault PDA is registered as a **User account** on the slab.
-
-### H Ratio (Haircut)
-The H ratio is Percolator's key safety mechanism. It ensures:
-```
-No user can ever withdraw more value than actually exists on the exchange
-```
-If the exchange is underfunded (e.g., after liquidation losses), the H ratio scales down withdrawals proportionally. This is formally verified with the Kani theorem prover.
-
-### Funding Rate
-Like all perp exchanges, Percolator has a funding rate that keeps the perp price close to the spot price:
-- When longs > shorts: longs pay shorts (positive funding)
-- When shorts > longs: shorts pay longs (negative funding)
-
-The keeper cranks funding settlement periodically.
-
-### Oracle
-Each market needs a price oracle. Percolator supports:
-- **Pyth** — production oracle from Pyth Network
-- **Oracle Authority** — admin can push prices directly (used for devnet testing)
+| Page | What |
+|---|---|
+| `/` | Hero, stats, features, composability showcase |
+| `/vaults` | Vault marketplace — browse, click to expand, deposit/withdraw |
+| `/compose` | 6 composability recipes with step-by-step flows |
+| `/earn` | Your positions across all vaults |
+| `/create` | 4-step vault creation wizard (fully on-chain) |
 
 ## Keeper Bot
 
-The keeper (`keeper/`) is a TypeScript process that:
+Funding Rate Harvest strategy (ported from Yogi):
 
-1. **Reads slab state** — account balances, positions, funding rate
-2. **Pushes oracle price** — in authority mode (devnet), or reads from Pyth (production)
-3. **Cranks funding** — calls Percolator KeeperCrank to settle funding payments
-4. **Executes trades** — calls Syntx `manager_trade` to open/close positions
-
-### Keeper Loop
 ```
 Every 30 seconds:
-  1. Fetch slab from RPC
-  2. Parse vault health (capital, PnL, position)
-  3. Push oracle price
-  4. Crank funding settlement
-  5. Evaluate strategy → trade if conditions met
+  1. Read slab state (position, PnL, funding rate)
+  2. Push oracle price (with retry)
+  3. Crank funding settlement
+  4. Strategy decision:
+     - Funding > 0 → SHORT (collect from longs)
+     - Funding < 0 → LONG (collect from shorts)
+     - Funding ≈ 0 → hold (no edge)
+  5. Scale by: vol regime × signal severity → deployment %
 ```
 
-### Strategy (Placeholder)
-Currently the keeper opens a small long position when flat. In production, it would port strategies from Yogi/Kodiak:
-- **Funding rate harvesting** — go long/short to collect funding payments
-- **Delta-neutral** — hedge spot exposure with perp shorts
-- **Signal-based** — use anomaly detection to time entries/exits
+## Tests (20/20 Passing)
+
+Positive tests: full lifecycle, fees, pause, update manager, share price oracle, multi-user deposits.
+
+Negative tests: unauthorized trade, unauthorized pause, unauthorized fees, unauthorized manager update, deposit when paused, deposit over cap, zero deposit, insufficient shares, double init.
 
 ## Project Structure
 
 ```
 syntx/
-├── programs/
-│   └── syntx-vault/
-│       ├── src/lib.rs              # Vault program (8 instructions)
-│       └── tests/integration.rs    # LiteSVM tests (6 passing)
+├── programs/syntx-vault/
+│   ├── src/lib.rs              # Vault program (13 instructions)
+│   └── tests/integration.rs    # 20 LiteSVM tests
 ├── keeper/
 │   ├── src/
-│   │   ├── index.ts                # Entry point
-│   │   ├── config.ts               # Environment config loader
-│   │   ├── keeper.ts               # Main loop (read, crank, trade)
-│   │   ├── slab.ts                 # Percolator slab parser
-│   │   ├── abi.ts                  # Instruction encoders
-│   │   ├── setup-devnet.ts         # Devnet deployment script
-│   │   └── test-tick.ts            # Single-tick test
-│   ├── devnet-vault.json           # Deployed addresses
-│   └── .env                        # Keeper config (not committed)
-├── docs/
-│   ├── BUILD-PLAN.md               # 8-phase roadmap
-│   ├── VAULT-ARCHITECTURE.md       # Vault PDA design
-│   └── HOW-IT-WORKS.md             # This explanation, expanded
-└── Anchor.toml                     # Solana program config
+│   │   ├── keeper.ts           # Main loop (oracle, crank, trade)
+│   │   ├── strategy.ts         # Funding Rate Harvest strategy
+│   │   ├── slab.ts             # Percolator slab parser
+│   │   ├── abi.ts              # Instruction encoders
+│   │   └── setup-devnet.ts     # Devnet deployment
+│   └── devnet-vault.json       # Deployed addresses
+├── sdk/
+│   └── src/
+│       ├── client.ts           # SyntxClient class
+│       ├── instructions.ts     # TX builders
+│       ├── accounts.ts         # On-chain parsers
+│       └── constants.ts        # PDA derivation
+├── app/
+│   └── src/app/
+│       ├── page.tsx            # Landing page
+│       ├── vaults/page.tsx     # Vault marketplace
+│       ├── compose/page.tsx    # Composability recipes
+│       ├── earn/page.tsx       # Portfolio view
+│       ├── create/page.tsx     # Vault creation wizard
+│       └── components/         # Nav, Footer, VaultDashboard, etc.
+└── docs/
+    ├── BUILD-PLAN.md           # Roadmap + current status
+    ├── HOW-IT-WORKS.md         # Complete guide
+    └── VAULT-ARCHITECTURE.md   # Technical spec
 ```
 
 ## Devnet Deployment
-
-Syntx is live on Solana devnet:
 
 | Component | Address |
 |---|---|
 | Syntx Vault Program | `53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V` |
 | Percolator Program | `Edq18N2pdT3Sz9EukbZe4YsQkvmxvmmkUL1KHpv96xJF` |
 | Vault PDA | `4pL2aQawAbc2XwjRE9ptrH4yxihn4BL2uVMavgZrtYUK` |
-| Percolator Slab | `J55KavPouZg8ZeWnTY77ZBL2DdQskzKpkFvuTtbUNzYC` |
-| Collateral Mint | `2uGTCDSfisKCTN2Yd8umXiWJzfRpWe8mhZM6WCK2vj8D` |
-| Share Mint | `6KMkX75jzL4jEDo9TXAr9NvCWefLnnv5vWLTtHtcmJqS` |
-
-Current on-chain state:
-```
-Vault [0]: Capital=999, Position=+1 (long), PnL=0
-LP    [1]: Capital=599999, Position=-1 (short)
-```
+| Percolator Slab (SOL-PERP) | `J55KavPouZg8ZeWnTY77ZBL2DdQskzKpkFvuTtbUNzYC` |
 
 ## Dependencies
 
-Syntx builds on Anatoly Yakovenko's Percolator stack (all Apache 2.0):
+All Apache 2.0, by Anatoly Yakovenko:
 
-| Repo | What | By |
-|---|---|---|
-| [percolator](https://github.com/aeyakovenko/percolator) | Core risk engine (H ratio, A/K ADL, formal proofs) | Anatoly |
-| [percolator-prog](https://github.com/aeyakovenko/percolator-prog) | Solana program (6.3K LOC Rust) | Anatoly |
-| [percolator-cli](https://github.com/aeyakovenko/percolator-cli) | CLI tools + slab parser | Anatoly |
-| [percolator-match](https://github.com/aeyakovenko/percolator-match) | Reference passive matcher | Anatoly |
-| [percolator-meta](https://github.com/aeyakovenko/percolator-meta) | Staking rewards (MetaDAO futarchy) | Anatoly |
-| [percolator-fabrknt](https://github.com/psyto/percolator-fabrknt) | 5 custom matchers (vol, event, macro, jpy, privacy) | Fabrknt |
+| Repo | What |
+|---|---|
+| [percolator](https://github.com/aeyakovenko/percolator) | Core risk engine (H ratio, A/K ADL, formal proofs) |
+| [percolator-prog](https://github.com/aeyakovenko/percolator-prog) | Solana program (6.3K LOC) |
+| [percolator-cli](https://github.com/aeyakovenko/percolator-cli) | CLI tools + slab parser |
+| [percolator-match](https://github.com/aeyakovenko/percolator-match) | Reference passive matcher |
+| [percolator-meta](https://github.com/aeyakovenko/percolator-meta) | Staking rewards (MetaDAO futarchy) |
+
+Custom matchers by Fabrknt: [percolator-fabrknt](https://github.com/psyto/percolator-fabrknt)
 
 ## Development
 
-### Build the vault program
 ```bash
+# Build vault program
 cargo-build-sbf --tools-version v1.53 -- --manifest-path programs/syntx-vault/Cargo.toml
-```
 
-### Run tests (requires percolator-prog binary)
-```bash
-# First build percolator-prog (production, not --features test)
-cd ../percolator-prog && cargo-build-sbf --tools-version v1.53
+# Run tests (requires percolator-prog binary)
+cargo test -p syntx-vault --test integration
 
-# Then run Syntx tests
-cd ../syntx && cargo test -p syntx-vault --test integration
-```
+# Run keeper
+cd keeper && npm install && cp .env.example .env && npx ts-node src/index.ts
 
-### Run keeper
-```bash
-cd keeper
-npm install
-cp .env.example .env  # fill in values from devnet-vault.json
-npx ts-node src/index.ts
-```
+# Run frontend
+cd app && npm install && npx next dev
 
-### Deploy to devnet
-```bash
-cd keeper
-npx ts-node src/setup-devnet.ts
+# Deploy to devnet
+cd keeper && npx ts-node src/setup-devnet.ts
 ```
 
 ## Roadmap
 
-| Phase | Status | Timeline |
-|---|---|---|
-| 0. Foundation | Done | Week 1 |
-| 1. Core vault + tests | Done | Week 2-3 |
-| 2. Keeper + devnet | Done | Week 3-4 |
-| 3. Fees + multi-market | Next | Week 4-5 |
-| 4. SDK + frontend | Planned | Week 5-7 |
-| 5. Security audit | Planned | Week 7-8 |
-| 6. SNTX token | Planned | Week 8-10 |
-| 7. Mainnet launch | Planned | Week 10-12 |
+| Phase | Status |
+|---|---|
+| Foundation + Core Vault | Done |
+| Keeper + Devnet | Done |
+| Fees + Multi-vault | Done |
+| SDK + Frontend | Done |
+| Composability (CPI, Jupiter) | Done |
+| Security Audit | Pending (~$50-100K) |
+| SNTX Token | Pending (needs legal) |
+| Mainnet Launch | Pending (after audit) |
 
-See [BUILD-PLAN.md](docs/BUILD-PLAN.md) for details.
+See [BUILD-PLAN.md](docs/BUILD-PLAN.md) for details, [HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) for the complete guide.
 
 ## License
 
