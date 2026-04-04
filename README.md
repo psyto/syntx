@@ -73,7 +73,7 @@ Users deposit → Syntx Vault Program → CPI → Percolator Program
 | Threat | Protection |
 |---|---|
 | Manager steals funds | Vault PDA has no private key — withdrawals go to share holders |
-| Exchange insolvency | Percolator H ratio — formally verified |
+| Exchange insolvency | Percolator H ratio — capital is senior, profit is junior. No user withdraws more than exists. |
 | Excessive drawdown | **Circuit breaker** — auto-rejects trades beyond max drawdown from peak |
 | Malicious CPI callers | **CPI whitelist** — vault manager restricts which programs can trade |
 | Oversized CPI trades | **Configurable size limit** — per-vault max trade size |
@@ -183,7 +183,7 @@ All Apache 2.0, by Anatoly Yakovenko:
 
 | Repo | What |
 |---|---|
-| [percolator](https://github.com/aeyakovenko/percolator) | Core risk engine (H ratio, A/K ADL, formal proofs) |
+| [percolator](https://github.com/aeyakovenko/percolator) | Risk engine — H (fair exits via pro-rata profit haircut) + A/K (fair overhang clearing via lazy side indices) |
 | [percolator-prog](https://github.com/aeyakovenko/percolator-prog) | Solana program (6.3K LOC) |
 | [percolator-cli](https://github.com/aeyakovenko/percolator-cli) | CLI tools + slab parser |
 | [percolator-match](https://github.com/aeyakovenko/percolator-match) | Reference passive matcher |

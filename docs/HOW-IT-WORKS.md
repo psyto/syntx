@@ -35,35 +35,79 @@ This funding rate is how vault strategies make money — by being on the side th
 
 ## 2. What Is Percolator?
 
-Percolator is a **perpetual futures exchange program** on Solana, created by Anatoly Yakovenko (Solana's co-founder). It is:
+Percolator is a **perpetual futures risk engine** on Solana, created by Anatoly Yakovenko (Solana's co-founder). It is described as "the `xy = k` of perpetual futures risk engines" — something you can reason about, audit, and run without human intervention.
 
 - **A Solana program** — runs on-chain, fully decentralized
-- **Formally verified** — mathematically proven to be safe (using the Kani theorem prover)
-- **Apache 2.0 licensed** — anyone can build on it
+- **Formally verified** — uses the Kani theorem prover
+- **Apache 2.0 licensed** — open research, anyone can fork it
+- **Self-healing** — markets always return to healthy without admin intervention
 
-### Percolator's Key Components
+### The Core Insight
 
-**Slab** — A single market (e.g., SOL-PERP). One big on-chain account (~1.1MB) containing:
-- Market config (what asset, what oracle, what fees)
-- All trading accounts (up to 4096 users + LPs)
-- Risk engine state
+> No user can ever withdraw more value than actually exists on the exchange balance sheet.
 
-**Accounts** — Inside a slab, each participant has an account:
+Traditional exchanges treat profit as money you can withdraw freely. Percolator treats profit as what it really is in a stressed exchange: **a junior claim on a shared balance sheet**. Capital (your deposit) is senior. Profit is junior.
+
+### Two Problems, Two Mechanisms
+
+A perp exchange has two fairness problems:
+
+1. **Exit fairness:** When the vault is stressed, who gets paid and how much?
+2. **Overhang clearing:** When positions go bankrupt, how does the opposing side absorb the residual?
+
+Percolator solves each with an independent mechanism:
+
+### H (Haircut Ratio) — Fair Exits
+
+A single global ratio determines how much profit is real:
+
 ```
-Account {
-  owner: pubkey,        // who controls this account
-  capital: u128,        // collateral deposited
-  position_size: i128,  // positive = long, negative = short
-  entry_price: u64,     // price when position was opened
-  pnl: i128,           // realized profit/loss
-}
+h = min(Residual, PNL_matured_pos_tot) / PNL_matured_pos_tot
 ```
 
-**LPs (Liquidity Providers)** — Special accounts that take the other side of trades. When you go long, an LP goes short (and vice versa).
+- If fully backed: `h = 1` — all profit is withdrawable
+- If stressed: `h < 1` — everyone takes the same proportional haircut
+- Every profitable account sees the same fraction: `effective_pnl = floor(released_pnl * h)`
 
-**H Ratio** — The safety valve. If the exchange loses money (e.g., from failed liquidations), the H ratio reduces how much winners can withdraw, ensuring the exchange never becomes insolvent. This is the key innovation — it's formally proven.
+**No rankings, no queue priority, no first-come advantage.** The floor rounding is conservative — the sum of all effective PnL never exceeds what exists in the vault.
 
-**Insurance Fund** — Collects trading fees to absorb losses before the H ratio kicks in.
+**Warmup defense:** Fresh profit sits in a per-account reserve and converts to released (matured) profit through a warmup period. An attacker who spikes a price sees their unrealized gain locked until the warmup passes — this is the core oracle-manipulation defense.
+
+**Flat accounts are always protected** — H only gates profit extraction, never touches deposited capital.
+
+### A/K (Lazy Side Indices) — Fair Overhang Clearing
+
+When a leveraged account goes bankrupt, the position needs to be removed and any deficit distributed. Traditional ADL queues pick specific counterparties and force-close them. Percolator replaces the queue with two global coefficients per side:
+
+- **A** scales everyone's effective position equally
+- **K** accumulates all PnL events into one index
+
+```
+effective_pos(i) = floor(basis_i * A / a_basis_i)
+pnl_delta(i)     = floor(|basis_i| * (K - k_snap_i) / (a_basis_i * POS_SCALE))
+```
+
+When a liquidation reduces OI, A decreases — every account on that side shrinks by the same ratio. When a deficit is socialized, K shifts — every account absorbs the same per-unit loss. **No account is singled out.** Settlement is O(1) per account and order-independent.
+
+### Markets Always Return to Healthy
+
+A/K guarantees recovery through a deterministic three-phase cycle:
+
+1. **DrainOnly** — when A drops below a precision threshold, no new positions can be opened. Only closes.
+2. **ResetPending** — when OI reaches zero, the engine resets A back to 1.
+3. **Normal** — once all accounts settle, trading reopens.
+
+No admin intervention. No governance vote. The state machine always makes progress.
+
+### Percolator's Components
+
+**Slab** — A single market (e.g., SOL-PERP). One on-chain account (~1.1MB) containing market config, all trading accounts (up to 4096), and the risk engine state.
+
+**Accounts** — Users and LPs, each with capital, position, PnL, and ownership.
+
+**LPs (Liquidity Providers)** — Take the other side of trades. Connected to matcher programs that determine pricing.
+
+**Insurance Fund** — Collects trading fees to absorb losses before H needs to haircut profits.
 
 ### How a Trade Works on Percolator
 
@@ -387,8 +431,10 @@ When equity drops 20% from peak, ALL trades (manager and CPI) are automatically 
 | **PDA** | Program Derived Address — an address only a program can sign for |
 | **Slab** | A Percolator market account containing all trading accounts |
 | **LP** | Liquidity Provider — takes the other side of user trades |
-| **H Ratio** | Percolator's withdrawal haircut — ensures solvency |
-| **A/K ADL** | Auto-deleverage system — fairly reduces positions when insurance is depleted |
+| **H Ratio** | Haircut ratio — pro-rata profit scaling. Capital is senior, profit is junior. When vault is stressed, h < 1 and everyone takes the same proportional haircut. No rankings, no queue priority. |
+| **A/K Indices** | Lazy side indices — replace traditional ADL queues. A scales positions equally, K accumulates PnL events. No account is singled out. Settlement is O(1) and order-independent. |
+| **Warmup** | Fresh profit is locked in a per-account reserve before becoming withdrawable. Defends against oracle manipulation — attacker's gain is locked until warmup passes. |
+| **DrainOnly** | A/K recovery phase — when A drops below precision threshold, only position closes are allowed. Guarantees markets return to healthy. |
 | **Funding Rate** | Periodic payment between longs and shorts to keep perp price near spot |
 | **Crank** | An off-chain bot call that triggers on-chain state updates (funding, etc.) |
 | **Share Token** | SPL token representing a user's portion of vault equity |
