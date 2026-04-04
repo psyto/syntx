@@ -680,8 +680,158 @@ fn test_syntx_full_lifecycle() {
     let user_col_state = TokenAccount::unpack(&user_col_account.data).unwrap();
     assert_eq!(user_col_state.amount, 0, "User should have 0 USDC after deposit");
 
+    println!("  Deposit OK: {} USDC → {} shares", deposit_amount, deposit_amount);
+
+    // --- Step 8: Create LP on Percolator for trade counterparty ---
+    let lp_owner = Keypair::new();
+    env.svm.airdrop(&lp_owner.pubkey(), 10_000_000_000).unwrap();
+    let lp_ata = Pubkey::new_unique();
+    env.svm.set_account(lp_ata, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &lp_owner.pubkey(), 0),
+        owner: spl_token::ID,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+    // Dummy matcher context
+    let matcher_prog = spl_token::ID;
+    let matcher_ctx = Pubkey::new_unique();
+    env.svm.set_account(matcher_ctx, Account {
+        lamports: 1_000_000,
+        data: vec![0u8; 320],
+        owner: matcher_prog,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+
+    let lp_ix = Instruction {
+        program_id: env.perc_id,
+        accounts: vec![
+            AccountMeta::new(lp_owner.pubkey(), true),
+            AccountMeta::new(env.slab, false),
+            AccountMeta::new(lp_ata, false),
+            AccountMeta::new(env.perc_vault, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+        ],
+        data: encode_init_lp(&matcher_prog, &matcher_ctx, 0),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[lp_ix], Some(&lp_owner.pubkey()), &[&lp_owner], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("init_lp failed");
+    let lp_idx: u16 = 1; // LP is account 1 (vault user was 0)
+    println!("  LP created at index {}", lp_idx);
+
+    // --- Step 9: Deposit collateral to LP so it can take the trade ---
+    let lp_deposit_ata = Pubkey::new_unique();
+    let lp_deposit_amount: u64 = 500_000_000; // 500 USDC
+    env.svm.set_account(lp_deposit_ata, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &lp_owner.pubkey(), lp_deposit_amount),
+        owner: spl_token::ID,
+        executable: false,
+        rent_epoch: 0,
+    }).unwrap();
+
+    let lp_dep_ix = Instruction {
+        program_id: env.perc_id,
+        accounts: vec![
+            AccountMeta::new(lp_owner.pubkey(), true),
+            AccountMeta::new(env.slab, false),
+            AccountMeta::new(lp_deposit_ata, false),
+            AccountMeta::new(env.perc_vault, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
+        ],
+        data: encode_deposit(lp_idx, lp_deposit_amount),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[lp_dep_ix], Some(&lp_owner.pubkey()), &[&lp_owner], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("lp deposit failed");
+    println!("  LP deposited {} USDC", lp_deposit_amount);
+
+    // --- Step 10: Manager Trade (vault PDA trades against LP) ---
+    let trade_size: i128 = 1_000_000; // 1 unit long
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager_pubkey, true),           // manager
+            AccountMeta::new(vault_pda, false),               // vault_state
+            AccountMeta::new(lp_owner.pubkey(), true),        // lp_owner (signer)
+            AccountMeta::new(env.slab, false),                // percolator_slab
+            AccountMeta::new_readonly(env.pyth_oracle, false), // oracle
+            AccountMeta::new_readonly(env.perc_id, false),    // percolator_program
+            AccountMeta::new_readonly(sysvar::clock::ID, false), // clock
+        ],
+        data: encode_syntx_manager_trade(lp_idx, trade_size),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager_pubkey), &[&env.payer, &lp_owner], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    match &result {
+        Ok(_) => println!("  Trade OK: size={}", trade_size),
+        Err(e) => {
+            println!("Trade failed:");
+            for log in &e.meta.logs {
+                println!("  LOG: {}", log);
+            }
+        }
+    }
+    result.expect("manager_trade failed");
+
+    // --- Step 11: Withdraw half the shares ---
+    let withdraw_shares: u64 = deposit_amount / 2; // 50 USDC worth
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(user.pubkey(), true),                  // user
+            AccountMeta::new(vault_pda, false),                     // vault_state
+            AccountMeta::new(user_shares, false),                   // user_shares
+            AccountMeta::new(user_collateral, false),               // user_collateral
+            AccountMeta::new(vault_collateral, false),              // vault_collateral
+            AccountMeta::new(share_mint, false),                    // share_mint
+            AccountMeta::new(env.slab, false),                      // percolator_slab
+            AccountMeta::new(env.perc_vault, false),                // percolator_vault
+            AccountMeta::new_readonly(env.perc_vault_pda, false),   // percolator_vault_authority
+            AccountMeta::new_readonly(env.pyth_oracle, false),      // oracle
+            AccountMeta::new_readonly(env.perc_id, false),          // percolator_program
+            AccountMeta::new_readonly(spl_token::ID, false),        // token_program
+            AccountMeta::new_readonly(sysvar::clock::ID, false),    // clock
+        ],
+        data: encode_syntx_withdraw(withdraw_shares),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&user.pubkey()), &[&user], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    match &result {
+        Ok(_) => println!("  Withdraw OK: {} shares burned", withdraw_shares),
+        Err(e) => {
+            println!("Withdraw failed:");
+            for log in &e.meta.logs {
+                println!("  LOG: {}", log);
+            }
+        }
+    }
+    result.expect("withdraw failed");
+
+    // Verify shares were burned
+    let shares_account = env.svm.get_account(&user_shares).unwrap();
+    let shares_state = TokenAccount::unpack(&shares_account.data).unwrap();
+    assert_eq!(shares_state.amount, deposit_amount - withdraw_shares, "Half shares should remain");
+
+    // Verify USDC was returned
+    let user_col_account = env.svm.get_account(&user_collateral).unwrap();
+    let user_col_state = TokenAccount::unpack(&user_col_account.data).unwrap();
+    let expected_usdc = deposit_amount / 2; // 50 USDC
+    assert_eq!(user_col_state.amount, expected_usdc, "User should have half USDC back");
+
     println!("=== Full lifecycle test passed ===");
-    println!("  Vault initialized on Percolator");
-    println!("  User deposited {} USDC", deposit_amount);
-    println!("  User received {} shares", deposit_amount);
+    println!("  InitVault + RegisterOnPercolator");
+    println!("  Deposit: {} USDC → {} shares", deposit_amount, deposit_amount);
+    println!("  Trade: size={} via vault PDA", trade_size);
+    println!("  Withdraw: {} shares → {} USDC", withdraw_shares, expected_usdc);
+    println!("  Remaining: {} shares", deposit_amount - withdraw_shares);
 }
