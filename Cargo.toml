@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "programs/syntx-vault",
+]
+resolver = "2"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1
+
+# Pin blake3 to avoid constant_time_eq 0.4 (edition2024, incompatible with SBF rustc 1.84)
+[patch.crates-io]
+blake3 = { git = "https://github.com/BLAKE3-team/BLAKE3.git", tag = "1.5.5" }
