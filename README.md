@@ -19,6 +19,25 @@ Anyone can create a **strategy vault** that trades perps on Percolator:
 
 Think of it as a **composable hedge fund infrastructure** — Percolator is the exchange, Syntx is the vault layer.
 
+## Why Syntx Has a Moat
+
+Anyone can build on Percolator. But Syntx ships with **29 infrastructure packages and 5 custom matchers** already built, plus proven vault intelligence validated on mainnet:
+
+| Component | From | What It Provides |
+|-----------|------|------------------|
+| [Tensor](https://github.com/fabrknt/tensor) | @fabrknt/tensor | Portfolio margin (Greeks, vol surface, delta-netting) |
+| [Tempest](https://github.com/fabrknt/tempest) | @fabrknt/tempest | Dynamic fee curves (5 vol regimes) |
+| [Veil](https://github.com/fabrknt/veil) | @fabrknt/veil | Encrypted orders, ZK proofs |
+| [Sentinel](https://github.com/fabrknt/sentinel) | @fabrknt/sentinel | Pre-transaction security (17 patterns, MEV protection) |
+| [Stratum](https://github.com/fabrknt/stratum) | @fabrknt/stratum | Orderbook state compression (800x reduction) |
+| [percolator-fabrknt](https://github.com/psyto/percolator-fabrknt) | 5 matchers | Custom matching strategies on Percolator devnet |
+| [Yogi](https://github.com/psyto/yogi) | Proven vault | Regime engine, anomaly detection, multi-asset DN (Drift mainnet) |
+| [Kodiak](https://github.com/psyto/kodiak) | Proven vault | 5-layer yield, tilt, liquidation detection (HL mainnet) |
+| [Flow](https://github.com/fabrknt/flow) | Intelligence | Capital flow signals, stress classification, AI analysis |
+| [PerpU](https://github.com/fabrknt/perpu) | Education | User base + developer community (182+ lessons) |
+
+A competitor building on Percolator from scratch would need months to replicate this stack.
+
 ## Why Composable Matters
 
 Syntx creates composable strategy vaults that interact with the entire Solana DeFi stack — not isolated perp markets.
