@@ -60,7 +60,7 @@ export default function Home() {
         <div className="max-w-[1100px] mx-auto px-6">
           <h2 className="text-2xl font-bold mb-3 text-center">Not just a perp DEX</h2>
           <p className="text-[var(--text-muted)] text-center mb-12 max-w-xl mx-auto">
-            Syntx creates composable strategy vaults that interact with the entire Solana ecosystem —
+            Fabrknt Vaults creates composable strategy vaults that interact with the entire Solana ecosystem —
             not isolated perp markets.
           </p>
 
@@ -90,7 +90,7 @@ export default function Home() {
           <h2 className="text-2xl font-bold mb-3 text-center">Compose with everything</h2>
           <p className="text-[var(--text-muted)] text-center mb-12 max-w-xl mx-auto">
             Purpose-built chains like Hyperliquid can never offer this.
-            Syntx vaults live on Solana — the composability layer.
+            Fabrknt Vaults live on Solana — the composability layer.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-[1px] bg-[var(--border)] rounded-xl overflow-hidden">
@@ -107,7 +107,7 @@ export default function Home() {
             <ComposeCard
               protocol="Kamino"
               action="Atomic hedging"
-              description="Lending protocols CPI into Syntx to auto-hedge exposure. One transaction, zero basis risk."
+              description="Lending protocols CPI into Fabrknt Vaults to auto-hedge exposure. One transaction, zero basis risk."
             />
             <ComposeCard
               protocol="Protocol Treasuries"
@@ -123,7 +123,7 @@ export default function Home() {
         <div className="max-w-[1100px] mx-auto px-6 py-20 text-center">
           <h2 className="text-3xl font-bold mb-4">The composable perp layer Solana needs</h2>
           <p className="text-[var(--text-muted)] mb-8 max-w-lg mx-auto">
-            Solana needs a composable perp layer. Syntx is building it on Percolator.
+            Solana needs a composable perp layer. Fabrknt Vaults is building it on Percolator.
             Live on devnet.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">

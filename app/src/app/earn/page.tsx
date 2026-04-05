@@ -106,7 +106,7 @@ export default function EarnPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold mb-2">Earn</h1>
         <p className="text-[var(--text-muted)]">
-          Your positions across all Syntx vaults. Deposit into vaults to earn yield from perp trading strategies.
+          Your positions across all Fabrknt Vaults. Deposit into vaults to earn yield from perp trading strategies.
         </p>
       </div>
 
