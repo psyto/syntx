@@ -30,10 +30,10 @@ const recipes: Recipe[] = [
     steps: [
       "Select token (SOL, BONK, JTO, etc.)",
       "Jupiter swaps to vault collateral",
-      "Fabrknt Vaults deposits into vault",
+      "Syntx deposits into vault",
       "Receive share tokens",
     ],
-    protocols: ["Jupiter", "Fabrknt Vaults"],
+    protocols: ["Jupiter", "Syntx"],
     status: "live",
   },
   {
@@ -43,11 +43,11 @@ const recipes: Recipe[] = [
     steps: [
       "Deposit SOL",
       "Jupiter swaps 50% to USDC",
-      "Fabrknt Vaults deposits to DN vault",
+      "Syntx deposits to DN vault",
       "Keeper opens matching short",
       "Earn funding rate (neutral to price)",
     ],
-    protocols: ["Jupiter", "Fabrknt Vaults", "Percolator"],
+    protocols: ["Jupiter", "Syntx", "Percolator"],
     status: "coming-soon",
     apy: "~8-15%",
   },
@@ -62,7 +62,7 @@ const recipes: Recipe[] = [
       "Deposit 70 USDC → get 70 more shares",
       "Total: 170 USDC exposure on 100 capital",
     ],
-    protocols: ["Fabrknt Vaults", "Kamino"],
+    protocols: ["Syntx", "Kamino"],
     status: "coming-soon",
     apy: "~17% (1.7x)",
   },
@@ -77,35 +77,35 @@ const recipes: Recipe[] = [
       "Treasury protected from SOL downside",
       "Earn funding when shorts are paid",
     ],
-    protocols: ["Squads", "Fabrknt Vaults", "Percolator"],
+    protocols: ["Squads", "Syntx", "Percolator"],
     status: "coming-soon",
   },
   {
     id: "atomic-hedge",
     title: "Lending Protocol Auto-Hedge",
-    description: "Kamino or Marginfi CPI into Fabrknt Vaults to automatically hedge lending exposure. Atomic — same transaction as the loan.",
+    description: "Kamino or Marginfi CPI into Syntx to automatically hedge lending exposure. Atomic — same transaction as the loan.",
     steps: [
       "User borrows SOL on Kamino",
-      "Kamino CPI calls Fabrknt Vaults cpi_trade",
-      "Fabrknt Vaults opens matching short on Percolator",
+      "Kamino CPI calls Syntx cpi_trade",
+      "Syntx opens matching short on Percolator",
       "Hedge is atomic with the loan",
       "If loan fails, hedge reverts too",
     ],
-    protocols: ["Kamino", "Fabrknt Vaults", "Percolator"],
+    protocols: ["Kamino", "Syntx", "Percolator"],
     status: "coming-soon",
   },
   {
     id: "spot-perp-arb",
     title: "Spot + Perp Arbitrage",
-    description: "Buy spot on Phoenix, short perp on Fabrknt Vaults in one transaction. Capture basis spread with zero directional risk.",
+    description: "Buy spot on Phoenix, short perp on Syntx in one transaction. Capture basis spread with zero directional risk.",
     steps: [
       "Detect basis spread (spot vs perp price)",
       "Phoenix: buy spot SOL",
-      "Fabrknt Vaults: short SOL-PERP",
+      "Syntx: short SOL-PERP",
       "Both in one atomic transaction",
       "Earn basis convergence + funding",
     ],
-    protocols: ["Phoenix", "Fabrknt Vaults", "Percolator"],
+    protocols: ["Phoenix", "Syntx", "Percolator"],
     status: "coming-soon",
   },
 ];
@@ -119,7 +119,7 @@ export default function ComposePage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold mb-2">Compose</h1>
         <p className="text-[var(--text-muted)] max-w-2xl">
-          Build multi-protocol DeFi strategies in one flow. Fabrknt Vaults compose with
+          Build multi-protocol DeFi strategies in one flow. Syntx compose with
           Jupiter, Kamino, Marginfi, Phoenix, and any Solana program via CPI.
           This is what purpose-built chains like Hyperliquid can never offer.
         </p>
@@ -219,13 +219,13 @@ export default function ComposePage() {
           <div>
             <div className="font-medium mb-2">CPI (Cross-Program Invocation)</div>
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-              Any Solana program can call Fabrknt Vaults in the same transaction. Atomic execution — if any step fails, everything reverts.
+              Any Solana program can call Syntx in the same transaction. Atomic execution — if any step fails, everything reverts.
             </p>
           </div>
           <div>
             <div className="font-medium mb-2">get_share_price</div>
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-              On-chain oracle returns vault share price. Lending protocols can value Fabrknt Vaults shares as collateral without external oracles.
+              On-chain oracle returns vault share price. Lending protocols can value Syntx shares as collateral without external oracles.
             </p>
           </div>
           <div>

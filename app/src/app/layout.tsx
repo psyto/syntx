@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Fabrknt Vaults — Composable Perp Vaults on Solana",
+  title: "Syntx — Composable Perp Vaults on Solana",
   description: "Launch and manage composable perp strategy vaults on Solana. Built by Fabrknt, powered by Percolator.",
 };
 

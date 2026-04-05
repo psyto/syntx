@@ -12,7 +12,7 @@ const WalletMultiButton = dynamic(
 const mainLinks = [
   { href: "https://fabrknt.com/flow", label: "Flow", external: true },
   { href: "https://fabrknt.com/learn", label: "Learn", external: true },
-  { href: "/", label: "Vaults", external: false },
+  { href: "/", label: "Syntx", external: false },
   { href: "https://fabrknt.com/dashboard", label: "Dashboard", external: true },
   { href: "https://github.com/fabrknt", label: "GitHub", external: true },
 ];
