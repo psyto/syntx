@@ -2,7 +2,25 @@
 
 Syntx is a permissionless vault protocol for perpetual futures on Solana. It adds a composable vault layer on top of [Percolator](https://github.com/aeyakovenko/percolator), the formally-verified perp risk engine built by Solana co-founder Anatoly Yakovenko.
 
-**Live on devnet. Keeper running. Deposit and withdraw from the browser.**
+**Part of the [Fabrknt](https://fabrknt.com) platform — live at [fabrknt.com/vaults](https://fabrknt.com/vaults) (devnet).**
+
+## Platform Context
+
+Syntx is one of three products on the Fabrknt platform:
+
+| Product | URL | What |
+|---|---|---|
+| **Flow** | [fabrknt.com/flow](https://fabrknt.com/flow) | Capital flow intelligence for Hyperliquid |
+| **Learn** | [fabrknt.com/learn](https://fabrknt.com/learn) | Cross-protocol perp DEX education |
+| **Syntx** | [fabrknt.com/vaults](https://fabrknt.com/vaults) | Composable perp vaults on Solana (this repo) |
+
+All three share the Fabrknt dark theme (`#050a0e` background, `#22d3ee` cyan accent) and a unified header navigation: **Flow / Learn / Syntx / Dashboard / GitHub**.
+
+### Deployment
+
+- **User-facing URL:** `fabrknt.com/vaults` (via Vercel with `basePath: '/vaults'`)
+- **Internal Vercel backend:** `syntx.fabrknt.com` (not user-facing)
+- **Status:** Devnet only. Not mainnet.
 
 ## The Problem
 
@@ -120,13 +138,15 @@ Users deposit → Syntx Vault Program → CPI → Percolator Program
 
 ## Frontend (6 Pages)
 
-| Page | What |
-|---|---|
-| `/` | Hero, stats, features, composability showcase |
-| `/vaults` | Vault marketplace — browse, click to expand, deposit/withdraw |
-| `/compose` | 6 composability recipes with step-by-step flows |
-| `/earn` | Your positions across all vaults |
-| `/create` | 4-step vault creation wizard (fully on-chain) |
+Deployed at [fabrknt.com/vaults](https://fabrknt.com/vaults) with the Fabrknt dark theme and shared platform navigation.
+
+| Page | Route | What |
+|---|---|---|
+| Landing | `/vaults` | Hero, stats, features, composability showcase |
+| Marketplace | `/vaults/vaults` | Vault marketplace — browse, click to expand, deposit/withdraw |
+| Compose | `/vaults/compose` | 6 composability recipes with step-by-step flows |
+| Earn | `/vaults/earn` | Your positions across all vaults |
+| Create | `/vaults/create` | 4-step vault creation wizard (fully on-chain) |
 
 ## Keeper Bot
 
@@ -222,7 +242,7 @@ cargo test -p syntx-vault --test integration
 # Run keeper
 cd keeper && npm install && cp .env.example .env && npx ts-node src/index.ts
 
-# Run frontend
+# Run frontend (local dev — serves at localhost:3000/vaults)
 cd app && npm install && npx next dev
 
 # Deploy to devnet
@@ -239,6 +259,7 @@ cd keeper && npx ts-node src/setup-devnet.ts
 | SDK + Frontend (6 pages) | Done |
 | Composability (CPI, Jupiter) | Done |
 | Circuit Breakers + Security Hardening | Done |
+| Fabrknt Platform Integration | Done |
 | Security Audit | Pending (~$50-100K, non-negotiable before mainnet) |
 | SNTX Token | Pending (needs legal counsel) |
 | Mainnet Launch | Pending (after audit) |
