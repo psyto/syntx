@@ -5,12 +5,13 @@ import Link from "next/link";
 export default function Footer() {
   return (
     <footer className="border-t mt-auto">
-      <div className="max-w-[1100px] mx-auto px-6 py-6">
+      <div className="max-w-6xl mx-auto px-6 py-6">
         <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-[var(--text-muted)]">
           <div className="flex items-center gap-4">
-            <a href="https://fabrknt.com/flow" target="_blank" rel="noopener noreferrer" className="hover:text-white transition">Flow</a>
-            <a href="https://fabrknt.com/learn" target="_blank" rel="noopener noreferrer" className="hover:text-white transition">Learn</a>
-            <Link href="/" className="hover:text-white transition">Vaults</Link>
+            <a href="https://fabrknt.com/flow" className="hover:text-white transition">Flow</a>
+            <a href="https://fabrknt.com/learn" className="hover:text-white transition">Learn</a>
+            <Link href="/" className="hover:text-white transition">Syntx</Link>
+            <a href="https://fabrknt.com/about" className="hover:text-white transition">About</a>
             <a href="https://github.com/fabrknt" target="_blank" rel="noopener noreferrer" className="hover:text-white transition">GitHub</a>
             <a href="https://x.com/fabrknt" target="_blank" rel="noopener noreferrer" className="hover:text-white transition">X</a>
           </div>
