@@ -11,6 +11,7 @@ export default function Footer() {
             <a href="https://fabrknt.com/flow" className="hover:text-white transition">Flow</a>
             <a href="https://fabrknt.com/learn" className="hover:text-white transition">Learn</a>
             <Link href="/" className="hover:text-white transition">Syntx</Link>
+            <a href="https://fabrknt.com/dashboard" className="hover:text-white transition">Dashboard</a>
             <a href="https://fabrknt.com/about" className="hover:text-white transition">About</a>
             <a href="https://github.com/fabrknt" target="_blank" rel="noopener noreferrer" className="hover:text-white transition">GitHub</a>
             <a href="https://x.com/fabrknt" target="_blank" rel="noopener noreferrer" className="hover:text-white transition">X</a>
