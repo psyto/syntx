@@ -38,7 +38,6 @@ export default function Nav() {
               <a
                 key={link.label}
                 href={link.href}
-                {...(link.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                 className={
                   link.active
                     ? "text-[var(--text)] font-medium"
