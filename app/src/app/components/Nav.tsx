@@ -13,8 +13,6 @@ const NAV_LINKS = [
   { href: "https://fabrknt.com/flow", label: "Flow" },
   { href: "https://fabrknt.com/learn", label: "Learn" },
   { href: "/", label: "Syntx", active: true },
-  { href: "https://fabrknt.com/dashboard", label: "Dashboard" },
-  { href: "https://github.com/fabrknt", label: "GitHub", external: true },
 ];
 
 const TOOLBAR_LINKS = [
