@@ -174,11 +174,11 @@ syntx/
 │       └── config.ts           # VENUE=percolator|phoenix|jupiter|router
 ├── sdk/
 │   └── src/
-│       ├── client.ts           # SyntxClient class
-│       ├── instructions.ts     # TX builders
+│       ├── client.ts           # SyntxClient (buildDepositTx, buildWithdrawTx)
+│       ├── instructions.ts     # All 17 instruction builders with JSDoc
 │       ├── accounts.ts         # On-chain parsers + vault discovery
 │       └── constants.ts        # PDA derivation
-├── app/                        # Next.js 16 frontend (5 pages)
+├── app/                        # Next.js 16 frontend (5 pages, mobile-responsive)
 │   └── src/app/
 │       ├── page.tsx            # Landing — composable exchange-agnostic vaults
 │       ├── vaults/page.tsx     # Vault marketplace (named vaults, venue badges)

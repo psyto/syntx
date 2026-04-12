@@ -84,17 +84,22 @@ Negative (12):
 - VENUE=percolator|phoenix|jupiter|router via env var
 - Running live on devnet, cranking every 30 seconds
 
-### Frontend (5 pages)
-- `/` — Landing: composable exchange-agnostic vaults, venue architecture diagram
+### Frontend (5 pages, mobile-responsive verified)
+- `/` — Landing: composable exchange-agnostic vaults, 3-architecture venue diagram
 - `/vaults` — Vault marketplace with named vaults, venue badges, deposit/withdraw
 - `/compose` — Architecture diagram, CPI code snippets, 6 composability recipes
 - `/earn` — Portfolio view across all vaults
 - `/create` — 4-step vault creation wizard
+- Verified at iPhone (375px), iPad (768px), desktop (1440px) — no layout issues
 
 ### SDK (complete)
 - SyntxClient class with buildDepositTx, buildWithdrawTx, buildWithdrawByAmountTx
-- Instruction builders with JSDoc (initVault, deposit, withdraw, collectFees)
+- Instruction builders with JSDoc:
+  - createInitVaultIx (includes minDrawdownBps for immutable floor)
+  - createDepositIx, createWithdrawIx, createCollectFeesIx
+  - createProposeManagerIx, createExecuteManagerTransferIx, createCancelManagerTransferIx
 - Account parsers, PDA derivation, vault discovery (fetchAllVaults)
+- Keeper abi.ts synced with all 17 on-chain instructions
 
 ### Examples
 - `examples/cpi-caller/` — Anchor program + TypeScript client for CPI into Syntx

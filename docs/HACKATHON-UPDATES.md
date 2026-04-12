@@ -20,6 +20,8 @@
 - 48h timelock on manager transfer (propose → wait → execute)
 - Immutable circuit breaker floor (min_drawdown_bps)
 - 27 tests passing
+- SDK + keeper abi synced with all 17 on-chain instructions
+- Mobile-responsive verified (iPhone, iPad, desktop)
 - README rewrite + business plan
 - CPI examples + venue adapter skeleton
 - CONTRIBUTING.md, JSDoc, error boundaries
