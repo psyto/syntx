@@ -9,6 +9,7 @@
     "deploy": "npx ts-node src/deploy-vault.ts"
   },
   "dependencies": {
+    "@ellipsis-labs/phoenix-sdk": "^2.0.3",
     "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.98.0",
     "dotenv": "^16.4.7"

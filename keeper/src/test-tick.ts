@@ -9,6 +9,9 @@ import { fetchSlab, parseHeader, parseEngine, getVaultHealth } from "./slab";
 async function main() {
   const config = loadConfig();
   const connection = new Connection(config.rpcUrl, "confirmed");
+  if (!config.percolatorSlab) {
+    throw new Error("PERCOLATOR_SLAB required for test-tick");
+  }
   console.log("Slab:", config.percolatorSlab.toBase58());
   console.log("Vault PDA:", config.vaultPda.toBase58());
 

@@ -11,30 +11,63 @@ function requireEnv(key: string): string {
   return val;
 }
 
+function optionalEnv(key: string): string | undefined {
+  return process.env[key];
+}
+
 function envPubkey(key: string): PublicKey {
   return new PublicKey(requireEnv(key));
 }
 
+function optionalPubkey(key: string): PublicKey | undefined {
+  const val = optionalEnv(key);
+  return val ? new PublicKey(val) : undefined;
+}
+
+export type VenueType = "percolator" | "phoenix";
+
 export interface Config {
   rpcUrl: string;
   managerKeypairPath: string;
+  venue: VenueType;
+  crankIntervalMs: number;
+
+  // Syntx program
   syntxProgramId: PublicKey;
-  percolatorProgramId: PublicKey;
-  percolatorSlab: PublicKey;
   vaultPda: PublicKey;
   collateralMint: PublicKey;
-  crankIntervalMs: number;
+
+  // Percolator-specific (required when venue=percolator)
+  percolatorProgramId?: PublicKey;
+  percolatorSlab?: PublicKey;
+
+  // Phoenix-specific (required when venue=phoenix)
+  phoenixProgramId?: PublicKey;
+  phoenixMarket?: PublicKey;
 }
 
 export function loadConfig(): Config {
-  return {
+  const venue = (optionalEnv("VENUE") ?? "percolator") as VenueType;
+
+  const config: Config = {
     rpcUrl: requireEnv("SOLANA_RPC_URL"),
     managerKeypairPath: requireEnv("MANAGER_KEYPAIR_PATH"),
+    venue,
+    crankIntervalMs: parseInt(process.env.CRANK_INTERVAL_MS ?? "30000", 10),
     syntxProgramId: envPubkey("SYNTX_PROGRAM_ID"),
-    percolatorProgramId: envPubkey("PERCOLATOR_PROGRAM_ID"),
-    percolatorSlab: envPubkey("PERCOLATOR_SLAB"),
     vaultPda: envPubkey("VAULT_PDA"),
     collateralMint: envPubkey("COLLATERAL_MINT"),
-    crankIntervalMs: parseInt(process.env.CRANK_INTERVAL_MS ?? "30000", 10),
   };
+
+  if (venue === "percolator") {
+    config.percolatorProgramId = envPubkey("PERCOLATOR_PROGRAM_ID");
+    config.percolatorSlab = envPubkey("PERCOLATOR_SLAB");
+  }
+
+  if (venue === "phoenix") {
+    config.phoenixProgramId = optionalPubkey("PHOENIX_PROGRAM_ID");
+    config.phoenixMarket = optionalPubkey("PHOENIX_MARKET");
+  }
+
+  return config;
 }
