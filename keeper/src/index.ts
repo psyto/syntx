@@ -2,7 +2,7 @@ import { Connection, Keypair } from "@solana/web3.js";
 import { readFileSync } from "fs";
 import { loadConfig } from "./config";
 import { runKeeper } from "./keeper";
-import { VenueAdapter, PercolatorAdapter, PhoenixAdapter } from "./venues";
+import { VenueAdapter, PercolatorAdapter, PhoenixAdapter, VenueRouter } from "./venues";
 
 function loadKeypair(path: string): Keypair {
   const resolved = path.replace("~", process.env.HOME ?? "");
@@ -39,6 +39,36 @@ function createVenue(config: ReturnType<typeof loadConfig>): VenueAdapter {
         vaultPda: config.vaultPda,
         marketAddress: config.phoenixMarket,
       });
+
+    case "router": {
+      const venues: VenueAdapter[] = [];
+
+      if (config.percolatorProgramId && config.percolatorSlab) {
+        venues.push(new PercolatorAdapter({
+          connection,
+          manager,
+          vaultPda: config.vaultPda,
+          syntxProgramId: config.syntxProgramId,
+          percolatorProgramId: config.percolatorProgramId,
+          percolatorSlab: config.percolatorSlab,
+        }));
+      }
+
+      if (config.phoenixMarket) {
+        venues.push(new PhoenixAdapter({
+          connection,
+          manager,
+          vaultPda: config.vaultPda,
+          marketAddress: config.phoenixMarket,
+        }));
+      }
+
+      if (venues.length === 0) {
+        throw new Error("Router venue requires at least one venue configured (Percolator and/or Phoenix)");
+      }
+
+      return new VenueRouter(venues);
+    }
 
     default:
       throw new Error(`Unknown venue: ${config.venue}`);

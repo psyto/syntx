@@ -24,7 +24,7 @@ function optionalPubkey(key: string): PublicKey | undefined {
   return val ? new PublicKey(val) : undefined;
 }
 
-export type VenueType = "percolator" | "phoenix";
+export type VenueType = "percolator" | "phoenix" | "router";
 
 export interface Config {
   rpcUrl: string;
@@ -59,13 +59,12 @@ export function loadConfig(): Config {
     collateralMint: envPubkey("COLLATERAL_MINT"),
   };
 
-  if (venue === "percolator") {
+  if (venue === "percolator" || venue === "router") {
     config.percolatorProgramId = envPubkey("PERCOLATOR_PROGRAM_ID");
     config.percolatorSlab = envPubkey("PERCOLATOR_SLAB");
   }
 
-  if (venue === "phoenix") {
-    config.phoenixProgramId = optionalPubkey("PHOENIX_PROGRAM_ID");
+  if (venue === "phoenix" || venue === "router") {
     config.phoenixMarket = optionalPubkey("PHOENIX_MARKET");
   }
 
