@@ -13,6 +13,9 @@ mod percolator_ix {
     pub const TRADE_NO_CPI: u8 = 6;
 }
 
+/// Timelock for admin actions: 48 hours (in seconds)
+const TIMELOCK_SECONDS: i64 = 48 * 60 * 60;
+
 #[program]
 pub mod syntx_vault {
     use super::*;
@@ -24,9 +27,11 @@ pub mod syntx_vault {
         performance_fee_bps: u16,
         management_fee_bps: u16,
         deposit_cap: u64,
+        min_drawdown_bps: u16,
     ) -> Result<()> {
         require!(performance_fee_bps <= 5000, SyntxError::FeeTooHigh);
         require!(management_fee_bps <= 1000, SyntxError::FeeTooHigh);
+        require!(min_drawdown_bps <= 10_000, SyntxError::FeeTooHigh);
 
         let vault = &mut ctx.accounts.vault_state;
         vault.bump = ctx.bumps.vault_state;
@@ -45,8 +50,12 @@ pub mod syntx_vault {
         vault.deposit_cap = deposit_cap;
         vault.paused = false;
         vault.initialized = false;
+        // Immutable minimum circuit breaker — cannot be reduced after creation
+        vault.min_drawdown_bps = min_drawdown_bps;
+        // Set initial drawdown to the minimum floor
+        vault.max_drawdown_bps = min_drawdown_bps;
 
-        msg!("Syntx vault state created");
+        msg!("Syntx vault created: min_drawdown={}bps", min_drawdown_bps);
         Ok(())
     }
 
@@ -635,13 +644,41 @@ pub mod syntx_vault {
         Ok(())
     }
 
-    /// Transfer vault management to a new keeper address.
-    pub fn update_manager(ctx: Context<UpdateManager>, new_manager: Pubkey) -> Result<()> {
+    /// Propose a manager transfer. Takes effect after TIMELOCK_SECONDS (48 hours).
+    /// This prevents instant hostile takeover if the manager key is compromised.
+    pub fn propose_manager(ctx: Context<UpdateManager>, new_manager: Pubkey) -> Result<()> {
         require!(new_manager != Pubkey::default(), SyntxError::ZeroAmount);
         let vault = &mut ctx.accounts.vault_state;
+        vault.pending_manager = new_manager;
+        vault.pending_manager_timestamp = Clock::get()?.unix_timestamp;
+        msg!("Manager transfer proposed: {} → {} (effective after 48h)", vault.manager, new_manager);
+        Ok(())
+    }
+
+    /// Execute a previously proposed manager transfer after the timelock has elapsed.
+    /// Can be called by either the current or pending manager.
+    pub fn execute_manager_transfer(ctx: Context<ExecuteManagerTransfer>) -> Result<()> {
+        let vault = &mut ctx.accounts.vault_state;
+        require!(vault.pending_manager != Pubkey::default(), SyntxError::NoPendingTransfer);
+
+        let now = Clock::get()?.unix_timestamp;
+        let elapsed = now - vault.pending_manager_timestamp;
+        require!(elapsed >= TIMELOCK_SECONDS, SyntxError::TimelockNotElapsed);
+
         let old = vault.manager;
-        vault.manager = new_manager;
-        msg!("Manager updated: {} → {}", old, new_manager);
+        vault.manager = vault.pending_manager;
+        vault.pending_manager = Pubkey::default();
+        vault.pending_manager_timestamp = 0;
+        msg!("Manager transferred: {} → {}", old, vault.manager);
+        Ok(())
+    }
+
+    /// Cancel a pending manager transfer (only current manager).
+    pub fn cancel_manager_transfer(ctx: Context<ManagerOnly>) -> Result<()> {
+        let vault = &mut ctx.accounts.vault_state;
+        vault.pending_manager = Pubkey::default();
+        vault.pending_manager_timestamp = 0;
+        msg!("Manager transfer cancelled");
         Ok(())
     }
 
@@ -653,7 +690,9 @@ pub mod syntx_vault {
     }
 
     /// Configure circuit breaker parameters.
-    /// max_drawdown_bps: auto-reject trades when equity drops this much from peak (0 = disabled)
+    /// max_drawdown_bps: auto-reject trades when equity drops this much from peak.
+    ///   Cannot be set below min_drawdown_bps (immutable floor from init_vault).
+    ///   Cannot be set to 0 if min_drawdown_bps > 0 (prevents disabling protection).
     /// cpi_whitelist: only this pubkey can call cpi_trade (Pubkey::default() = any)
     /// max_cpi_trade_size: max position size per CPI trade (0 = default 1M)
     pub fn set_circuit_breaker(
@@ -662,8 +701,15 @@ pub mod syntx_vault {
         cpi_whitelist: Pubkey,
         max_cpi_trade_size: u64,
     ) -> Result<()> {
-        require!(max_drawdown_bps <= 10_000, SyntxError::FeeTooHigh); // max 100%
+        require!(max_drawdown_bps <= 10_000, SyntxError::FeeTooHigh);
         let vault = &mut ctx.accounts.vault_state;
+        // Enforce immutable minimum — manager cannot weaken protection below floor
+        if vault.min_drawdown_bps > 0 {
+            require!(
+                max_drawdown_bps >= vault.min_drawdown_bps,
+                SyntxError::BelowMinimumProtection
+            );
+        }
         vault.max_drawdown_bps = max_drawdown_bps;
         vault.cpi_whitelist = cpi_whitelist;
         vault.max_cpi_trade_size = max_cpi_trade_size;
@@ -671,8 +717,8 @@ pub mod syntx_vault {
         if vault.peak_equity == 0 && vault.total_deposits > 0 {
             vault.peak_equity = vault.total_deposits;
         }
-        msg!("Circuit breaker: drawdown={}bps, cpi_whitelist={}, max_cpi_size={}",
-            max_drawdown_bps, cpi_whitelist, max_cpi_trade_size);
+        msg!("Circuit breaker: drawdown={}bps (min={}bps), cpi_whitelist={}, max_cpi_size={}",
+            max_drawdown_bps, vault.min_drawdown_bps, cpi_whitelist, max_cpi_trade_size);
         Ok(())
     }
 
@@ -1071,6 +1117,25 @@ pub struct UpdateManager<'info> {
     pub vault_state: Box<Account<'info, VaultState>>,
 }
 
+/// Either current manager or pending manager can execute the transfer after timelock.
+#[derive(Accounts)]
+pub struct ExecuteManagerTransfer<'info> {
+    #[account(
+        constraint = (
+            caller.key() == vault_state.manager ||
+            caller.key() == vault_state.pending_manager
+        ) @ SyntxError::Unauthorized
+    )]
+    pub caller: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", vault_state.collateral_mint.as_ref(), vault_state.manager.as_ref()],
+        bump = vault_state.bump,
+    )]
+    pub vault_state: Box<Account<'info, VaultState>>,
+}
+
 #[derive(Accounts)]
 pub struct ManagerOnly<'info> {
     #[account(constraint = manager.key() == vault_state.manager @ SyntxError::Unauthorized)]
@@ -1162,6 +1227,16 @@ pub struct VaultState {
     pub cpi_whitelist: Pubkey,
     /// Maximum single trade size for cpi_trade (0 = use default 1M)
     pub max_cpi_trade_size: u64,
+
+    // Timelock for manager transfer (48h delay)
+    /// Pending new manager (Pubkey::default() = no pending transfer)
+    pub pending_manager: Pubkey,
+    /// Timestamp when manager transfer was proposed
+    pub pending_manager_timestamp: i64,
+
+    // Immutable minimum protection (set at vault creation, cannot be reduced)
+    /// Minimum drawdown limit in bps — manager cannot set max_drawdown_bps below this
+    pub min_drawdown_bps: u16,
 }
 
 // =============================================================================
@@ -1196,4 +1271,10 @@ pub enum SyntxError {
     CircuitBreakerTriggered,
     #[msg("CPI caller not whitelisted")]
     CpiCallerNotWhitelisted,
+    #[msg("No pending manager transfer")]
+    NoPendingTransfer,
+    #[msg("Timelock not elapsed — wait 48 hours after proposal")]
+    TimelockNotElapsed,
+    #[msg("Cannot reduce protection below minimum floor")]
+    BelowMinimumProtection,
 }

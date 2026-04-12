@@ -418,11 +418,13 @@ fn encode_syntx_init_vault(
     performance_fee_bps: u16,
     management_fee_bps: u16,
     deposit_cap: u64,
+    min_drawdown_bps: u16,
 ) -> Vec<u8> {
     let mut data = disc("init_vault");
     data.extend_from_slice(&performance_fee_bps.to_le_bytes());
     data.extend_from_slice(&management_fee_bps.to_le_bytes());
     data.extend_from_slice(&deposit_cap.to_le_bytes());
+    data.extend_from_slice(&min_drawdown_bps.to_le_bytes());
     data
 }
 
@@ -531,7 +533,7 @@ fn test_syntx_init_vault() {
             AccountMeta::new_readonly(env.perc_id, false),  // percolator_program
             AccountMeta::new_readonly(solana_sdk::system_program::ID, false), // system_program
         ],
-        data: encode_syntx_init_vault(2000, 200, 1_000_000_000), // 20% perf, 2% mgmt, 1000 USDC cap
+        data: encode_syntx_init_vault(2000, 200, 1_000_000_000, 500), // 20% perf, 2% mgmt, 1000 USDC cap
     };
 
     let tx = Transaction::new_signed_with_payer(
@@ -576,7 +578,7 @@ fn test_syntx_full_lifecycle() {
             AccountMeta::new_readonly(env.perc_id, false),
             AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
         ],
-        data: encode_syntx_init_vault(2000, 200, 1_000_000_000),
+        data: encode_syntx_init_vault(2000, 200, 1_000_000_000, 500),
     };
     let tx = Transaction::new_signed_with_payer(
         &[ix], Some(&manager_pubkey), &[manager], env.svm.latest_blockhash(),
@@ -906,7 +908,7 @@ fn test_collect_fees() {
             AccountMeta::new_readonly(env.perc_id, false),
             AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
         ],
-        data: encode_syntx_init_vault(2000, 200, 1_000_000_000),
+        data: encode_syntx_init_vault(2000, 200, 1_000_000_000, 500),
     };
     let tx = Transaction::new_signed_with_payer(
         &[ix], Some(&manager_pubkey), &[manager], env.svm.latest_blockhash(),
@@ -1090,7 +1092,7 @@ fn setup_vault_with_deposit(env: &mut TestEnv) -> (Pubkey, Pubkey, Pubkey, Pubke
             AccountMeta::new_readonly(env.perc_id, false),
             AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
         ],
-        data: encode_syntx_init_vault(2000, 200, 500_000_000), // cap: 500
+        data: encode_syntx_init_vault(2000, 200, 500_000_000, 500), // cap: 500
     };
     let tx = Transaction::new_signed_with_payer(
         &[ix], Some(&manager_pubkey), &[manager], env.svm.latest_blockhash(),
@@ -1237,7 +1239,8 @@ fn test_update_manager() {
     let manager = &env.payer;
     let new_manager = Keypair::new();
 
-    let mut data = disc("update_manager");
+    // Step 1: Propose manager transfer
+    let mut data = disc("propose_manager");
     data.extend_from_slice(new_manager.pubkey().as_ref());
     let ix = Instruction {
         program_id: env.syntx_id,
@@ -1250,8 +1253,35 @@ fn test_update_manager() {
     let tx = Transaction::new_signed_with_payer(
         &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
     );
-    env.svm.send_transaction(tx).expect("update_manager failed");
-    println!("test_update_manager passed");
+    env.svm.send_transaction(tx).expect("propose_manager failed");
+
+    // Step 2: Try to execute immediately — should fail (timelock not elapsed)
+    let ix_exec = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data: disc("execute_manager_transfer"),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix_exec.clone()], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    assert!(result.is_err(), "Execute should fail before timelock");
+
+    // Step 3: Warp clock forward 49 hours and advance slot for fresh blockhash
+    let mut clock = env.svm.get_sysvar::<Clock>();
+    clock.unix_timestamp += 49 * 60 * 60;
+    env.svm.set_sysvar(&clock);
+    env.svm.expire_blockhash();
+
+    // Step 4: Execute — should succeed now
+    let tx = Transaction::new_signed_with_payer(
+        &[ix_exec], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("execute_manager_transfer should succeed after timelock");
+    println!("test_update_manager passed (with 48h timelock)");
 }
 
 #[test]
@@ -1553,7 +1583,7 @@ fn test_update_manager_rejected_by_non_manager() {
     let attacker = Keypair::new();
     env.svm.airdrop(&attacker.pubkey(), 10_000_000_000).unwrap();
 
-    let mut data = disc("update_manager");
+    let mut data = disc("propose_manager");
     data.extend_from_slice(attacker.pubkey().as_ref());
     let ix = Instruction {
         program_id: env.syntx_id,
@@ -1567,7 +1597,7 @@ fn test_update_manager_rejected_by_non_manager() {
         &[ix], Some(&attacker.pubkey()), &[&attacker], env.svm.latest_blockhash(),
     );
     let result = env.svm.send_transaction(tx);
-    assert!(result.is_err(), "Non-manager should not update manager");
+    assert!(result.is_err(), "Non-manager should not propose manager transfer");
     println!("test_update_manager_rejected_by_non_manager passed");
 }
 
@@ -1632,7 +1662,7 @@ fn test_double_init_vault_rejected() {
             AccountMeta::new_readonly(env.perc_id, false),
             AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
         ],
-        data: encode_syntx_init_vault(2000, 200, 0),
+        data: encode_syntx_init_vault(2000, 200, 0, 500),
     };
     let tx = Transaction::new_signed_with_payer(
         &[ix.clone()], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
@@ -1902,7 +1932,7 @@ fn test_get_share_price_on_fresh_vault() {
             AccountMeta::new_readonly(env.perc_id, false),
             AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
         ],
-        data: encode_syntx_init_vault(2000, 200, 0),
+        data: encode_syntx_init_vault(2000, 200, 0, 500),
     };
     let tx = Transaction::new_signed_with_payer(
         &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
@@ -1922,4 +1952,113 @@ fn test_get_share_price_on_fresh_vault() {
     );
     env.svm.send_transaction(tx).expect("get_share_price on fresh vault should succeed");
     println!("test_get_share_price_on_fresh_vault passed");
+}
+
+#[test]
+fn test_circuit_breaker_cannot_go_below_minimum() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    // setup_vault_with_deposit creates vault with min_drawdown_bps=500 (5%)
+    let (vault_pda, _, _, _, _) = setup_vault_with_deposit(&mut env);
+    let manager = &env.payer;
+
+    // Try to set drawdown to 200 (below min of 500) — should fail
+    let whitelist = Pubkey::new_unique();
+    let mut data = disc("set_circuit_breaker");
+    data.extend_from_slice(&200u16.to_le_bytes()); // 2% < 5% min
+    data.extend_from_slice(whitelist.as_ref());
+    data.extend_from_slice(&1_000_000u64.to_le_bytes());
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    assert!(result.is_err(), "Cannot set drawdown below min_drawdown_bps");
+
+    // Setting to 1000 (above min of 500) — should succeed
+    let mut data = disc("set_circuit_breaker");
+    data.extend_from_slice(&1000u16.to_le_bytes()); // 10% > 5% min
+    data.extend_from_slice(whitelist.as_ref());
+    data.extend_from_slice(&1_000_000u64.to_le_bytes());
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("Drawdown above minimum should succeed");
+    println!("test_circuit_breaker_cannot_go_below_minimum passed");
+}
+
+#[test]
+fn test_cancel_manager_transfer() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, _, _, _, _) = setup_vault_with_deposit(&mut env);
+    let manager = &env.payer;
+    let new_manager = Keypair::new();
+
+    // Propose
+    let mut data = disc("propose_manager");
+    data.extend_from_slice(new_manager.pubkey().as_ref());
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).unwrap();
+
+    // Cancel
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data: disc("cancel_manager_transfer"),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("cancel_manager_transfer should succeed");
+
+    // Warp clock and try execute — should fail (cancelled)
+    let mut clock = env.svm.get_sysvar::<Clock>();
+    clock.unix_timestamp += 49 * 60 * 60;
+    env.svm.set_sysvar(&clock);
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data: disc("execute_manager_transfer"),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    assert!(result.is_err(), "Execute should fail after cancellation");
+    println!("test_cancel_manager_transfer passed");
 }
