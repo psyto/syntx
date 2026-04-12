@@ -19,8 +19,8 @@
 - SDK completed (buildDepositTx, buildWithdrawTx)
 - 48h timelock on manager transfer (propose → wait → execute)
 - Immutable circuit breaker floor (min_drawdown_bps)
-- 27 tests passing
-- SDK + keeper abi synced with all 17 on-chain instructions
+- 29 tests passing
+- SDK + keeper abi synced with all 15 on-chain instructions
 - Mobile-responsive verified (iPhone, iPad, desktop)
 - README rewrite + business plan
 - CPI examples + venue adapter skeleton
@@ -64,7 +64,7 @@
 
 "This isn't our first vault. Yogi runs live on Drift mainnet. Kodiak runs live on Hyperliquid. Syntx is the architecture we wished existed — exchange-agnostic from day one."
 
-"Seventeen instructions. Twenty-seven tests. Four venue adapters across three architectures. 48-hour timelock. Immutable circuit breaker floor. Full SDK. Live on devnet. Syntx — composable exchange-agnostic vaults on Solana."
+"Fifteen instructions. Twenty-nine tests. Four venue adapters across three architectures. 48-hour timelock. Immutable circuit breaker floor. Full SDK. Live on devnet. Syntx — composable exchange-agnostic vaults on Solana."
 
 ---
 
@@ -92,7 +92,7 @@
 
 ### Traction (20s)
 
-"Live on devnet. Seventeen Anchor instructions. Twenty-seven tests. Four venue adapters across three architectures. Complete TypeScript SDK. Five frontend pages. Mobile-responsive. CPI examples. Business plan."
+"Live on devnet. Fifteen Anchor instructions. Twenty-nine tests. Four venue adapters across three architectures. Complete TypeScript SDK. Five frontend pages. Mobile-responsive. CPI examples. Business plan."
 
 "This isn't a prototype — it's a submission-ready product waiting for an audit to unlock mainnet."
 
@@ -102,7 +102,7 @@
 
 ### Ask (15s)
 
-"We need audit funding — fifty to a hundred thousand dollars. Seventeen instructions, clean code, twenty-seven tests. An audit unlocks mainnet. We're applying to the Colosseum accelerator for funding and distribution."
+"We need audit funding — fifty to a hundred thousand dollars. Fifteen instructions, clean code, twenty-nine tests. An audit unlocks mainnet. We're applying to the Colosseum accelerator for funding and distribution."
 
 ### Close (15s)
 

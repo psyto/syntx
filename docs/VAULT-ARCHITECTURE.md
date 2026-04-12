@@ -223,5 +223,5 @@ cargo-build-sbf --tools-version v1.53 -- --manifest-path programs/syntx-vault/Ca
 # Test (requires percolator_prog.so)
 cargo test -p syntx-vault --test integration
 
-# 27 tests: lifecycle, fees, access control, circuit breakers, timelock, multi-user
+# 29 tests: lifecycle, fees, access control, circuit breakers, timelock, multi-user
 ```

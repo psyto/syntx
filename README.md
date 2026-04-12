@@ -107,7 +107,7 @@ Switch venues with one env var: `VENUE=percolator`, `VENUE=phoenix`, `VENUE=jupi
 
 **The double-risk question:** Users bear Syntx contract risk on top of DEX risk. But single-venue vaults have 100% concentration risk — when that DEX goes down, the strategy dies. Syntx adds one audit-mitigable layer but removes unmitigable venue concentration. Net risk is lower for any vault managing meaningful capital. See [SECURITY-ASSESSMENT.md](docs/SECURITY-ASSESSMENT.md) for the full analysis.
 
-**Honest assessment:** Syntx is unaudited. 27 tests pass but tests != audit. Security audit (~$50-100K) is required before mainnet.
+**Honest assessment:** Syntx is unaudited. 29 tests pass but tests != audit. Security audit (~$50-100K) is required before mainnet.
 
 ## Composability Recipes
 
@@ -160,7 +160,7 @@ cd keeper && npx ts-node src/setup-devnet.ts
 ```
 syntx/
 ├── programs/syntx-vault/
-│   ├── src/lib.rs              # Vault program (17 instructions, timelock, immutable floor)
+│   ├── src/lib.rs              # Vault program (15 instructions, timelock, immutable floor)
 │   └── tests/integration.rs    # 27 LiteSVM tests
 ├── keeper/
 │   └── src/
@@ -177,7 +177,7 @@ syntx/
 ├── sdk/
 │   └── src/
 │       ├── client.ts           # SyntxClient (buildDepositTx, buildWithdrawTx)
-│       ├── instructions.ts     # All 17 instruction builders with JSDoc
+│       ├── instructions.ts     # All 15 instruction builders with JSDoc
 │       ├── accounts.ts         # On-chain parsers + vault discovery
 │       └── constants.ts        # PDA derivation
 ├── app/                        # Next.js 16 frontend (5 pages, mobile-responsive)

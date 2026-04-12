@@ -11,7 +11,7 @@ Syntx is a composable exchange-agnostic vault layer for Solana perps. Vaults rou
 | Phase | Status | What was built |
 |---|---|---|
 | 0. Foundation | Done | Anchor scaffold, Percolator CPI integration |
-| 1. Core Vault | Done | 17 instructions, 27 tests passing |
+| 1. Core Vault | Done | 15 instructions, 29 tests passing |
 | 2. Keeper | Done | Funding rate strategy, running live on devnet |
 | 3. Fees | Done | Performance + management fees via share dilution |
 | 4. SDK + Frontend | Done | TypeScript SDK (complete), 5-page Next.js app |
@@ -30,7 +30,7 @@ Syntx is a composable exchange-agnostic vault layer for Solana perps. Vaults rou
 
 ## What's Built
 
-### Vault Program (17 instructions, 27 tests)
+### Vault Program (15 instructions, 29 tests)
 
 Core vault:
 - init_vault, register_on_percolator, set_percolator_idx
@@ -57,25 +57,27 @@ Security:
 - VenueRouter — scores venues by funding rate, liquidity, insurance; routes to best
 - 3 architectures covered: slab-based (Percolator), CLOB (Phoenix), oracle-based AMM (Jupiter Perps)
 
-### Tests (27 passing)
+### Tests (29 passing)
 
-Positive (15):
+Positive (16):
 - Full lifecycle (init → register → deposit → trade → withdraw)
 - Fee collection with performance + management fees
 - Pause/unpause, share price oracle
 - Manager transfer with 48h timelock (propose → warp → execute)
 - Cancel manager transfer
+- Manager crank (funding settlement)
 - Multi-user deposit with share price verification
 - Circuit breaker configuration (above minimum floor)
 - Share price on fresh vault
 - Deposit after unpause cycle
 
-Negative (12):
+Negative (13):
 - Unauthorized trade, pause, fees, manager proposal, circuit breaker (5 tests)
 - Deposit when paused, deposit over cap, zero deposit (3 tests)
 - Insufficient shares, withdraw over balance (2 tests)
 - Double init rejected (1 test)
 - Circuit breaker below immutable minimum rejected (1 test)
+- CPI trade rejected when caller not whitelisted (1 test)
 
 ### Keeper Bot
 - Venue-agnostic: calls VenueAdapter methods, not venue-specific code
@@ -99,7 +101,7 @@ Negative (12):
   - createDepositIx, createWithdrawIx, createCollectFeesIx
   - createProposeManagerIx, createExecuteManagerTransferIx, createCancelManagerTransferIx
 - Account parsers, PDA derivation, vault discovery (fetchAllVaults)
-- Keeper abi.ts synced with all 17 on-chain instructions
+- Keeper abi.ts synced with all 15 on-chain instructions
 
 ### Examples
 - `examples/cpi-caller/` — Anchor program + TypeScript client for CPI into Syntx
@@ -109,7 +111,7 @@ Negative (12):
 
 | Risk | Status | Mitigation |
 |---|---|---|
-| Vault program unaudited | **Critical** | 27 tests pass but tests != audit. Must audit before mainnet. |
+| Vault program unaudited | **Critical** | 29 tests pass but tests != audit. Must audit before mainnet. |
 | Single manager key (SPOF) | **Mitigated** | 48h timelock on manager transfer, immutable circuit breaker floor. Squads multisig planned post-audit. |
 | Manager disables protections | **Mitigated** | min_drawdown_bps set at vault creation, cannot be reduced — ever. |
 | Composability = vulnerability propagation | Partially addressed | CPI whitelist + size limits reduce surface, don't eliminate it |

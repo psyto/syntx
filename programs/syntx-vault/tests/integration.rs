@@ -2062,3 +2062,88 @@ fn test_cancel_manager_transfer() {
     assert!(result.is_err(), "Execute should fail after cancellation");
     println!("test_cancel_manager_transfer passed");
 }
+
+#[test]
+fn test_manager_crank() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, _, _, _, _) = setup_vault_with_deposit(&mut env);
+    let manager = &env.payer;
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new_readonly(vault_pda, false),
+            AccountMeta::new(env.slab, false),
+            AccountMeta::new_readonly(env.pyth_oracle, false),
+            AccountMeta::new_readonly(env.perc_id, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
+        ],
+        data: disc("manager_crank"),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("manager_crank should succeed");
+    println!("test_manager_crank passed");
+}
+
+#[test]
+fn test_cpi_trade_rejected_when_not_whitelisted() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, _, _, _, _) = setup_vault_with_deposit(&mut env);
+    let manager = &env.payer;
+
+    // First, set circuit breaker with a specific whitelist (not the caller)
+    let whitelisted_program = Pubkey::new_unique();
+    let mut cb_data = disc("set_circuit_breaker");
+    cb_data.extend_from_slice(&500u16.to_le_bytes());
+    cb_data.extend_from_slice(whitelisted_program.as_ref());
+    cb_data.extend_from_slice(&1_000_000u64.to_le_bytes());
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data: cb_data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).unwrap();
+
+    // Now try cpi_trade from a non-whitelisted caller
+    let attacker = Keypair::new();
+    env.svm.airdrop(&attacker.pubkey(), 10_000_000_000).unwrap();
+
+    let lp_owner = Keypair::new();
+    env.svm.airdrop(&lp_owner.pubkey(), 10_000_000_000).unwrap();
+
+    let mut cpi_data = disc("cpi_trade");
+    cpi_data.extend_from_slice(&1u16.to_le_bytes()); // lp_idx
+    cpi_data.extend_from_slice(&(100i128).to_le_bytes()); // size
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(attacker.pubkey(), true),     // caller (not whitelisted)
+            AccountMeta::new_readonly(vault_pda, false),   // vault_state
+            AccountMeta::new(lp_owner.pubkey(), true),     // lp_owner
+            AccountMeta::new(env.slab, false),             // percolator_slab
+            AccountMeta::new_readonly(env.pyth_oracle, false), // oracle
+            AccountMeta::new_readonly(env.perc_id, false), // percolator_program
+            AccountMeta::new_readonly(sysvar::clock::ID, false), // clock
+        ],
+        data: cpi_data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&attacker.pubkey()), &[&attacker, &lp_owner], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    assert!(result.is_err(), "cpi_trade should be rejected for non-whitelisted caller");
+    println!("test_cpi_trade_rejected_when_not_whitelisted passed");
+}
