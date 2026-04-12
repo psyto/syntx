@@ -96,15 +96,16 @@ export default function VaultList() {
   const { publicKey } = useWallet();
   const [vaults, setVaults] = useState<VaultEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [expandedVault, setExpandedVault] = useState<string | null>(null);
 
   const fetchVaults = useCallback(async () => {
     try {
       setLoading(true);
-      // Fetch all accounts owned by Syntx program
+      setError(null);
       const accounts = await connection.getProgramAccounts(SYNTX_PROGRAM_ID, {
-        dataSlice: { offset: 0, length: 260 }, // enough for VaultState with circuit breaker fields
+        dataSlice: { offset: 0, length: 260 },
       });
 
       const parsed: VaultEntry[] = [];
@@ -114,8 +115,11 @@ export default function VaultList() {
         if (entry) parsed.push(entry);
       }
       setVaults(parsed);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to fetch vaults:", e);
+      setError(e?.message?.includes("fetch") || e?.message?.includes("429")
+        ? "Devnet RPC is temporarily unavailable. Please try again in a moment."
+        : "Failed to load vaults. Please check your connection.");
     } finally {
       setLoading(false);
     }
@@ -147,7 +151,17 @@ export default function VaultList() {
         />
       )}
 
-      {loading ? (
+      {error ? (
+        <div className="panel p-6 text-center">
+          <div className="text-sm text-[var(--text-muted)] mb-3">{error}</div>
+          <button
+            onClick={fetchVaults}
+            className="text-xs px-4 py-2 bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-lg transition"
+          >
+            Retry
+          </button>
+        </div>
+      ) : loading ? (
         <div className="space-y-2">
           <div className="shimmer h-20 rounded-xl" />
           <div className="shimmer h-20 rounded-xl" />

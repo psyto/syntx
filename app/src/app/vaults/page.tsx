@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import ErrorBoundary from "../components/ErrorBoundary";
 
 const VaultList = dynamic(() => import("../components/VaultList"), { ssr: false });
 
@@ -14,7 +15,9 @@ export default function VaultsPage() {
           Each vault is managed by an independent keeper with its own strategy.
         </p>
       </div>
-      <VaultList />
+      <ErrorBoundary>
+        <VaultList />
+      </ErrorBoundary>
     </div>
   );
 }
