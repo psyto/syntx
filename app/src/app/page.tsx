@@ -91,8 +91,8 @@ export default function Home() {
         <div className="max-w-[1100px] mx-auto px-6">
           <h2 className="text-2xl font-bold mb-3 text-center">Route to best execution</h2>
           <p className="text-[var(--text-muted)] text-center mb-12 max-w-xl mx-auto">
-            The VenueRouter scores each DEX by funding rate, liquidity, and cost —
-            then routes your vault&apos;s trades to the best venue.
+            Three architectures — slab-based, CLOB, oracle-AMM — unified behind one interface.
+            The VenueRouter scores each DEX and routes to the best venue.
           </p>
 
           <div className="panel p-8">

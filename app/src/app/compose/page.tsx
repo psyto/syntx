@@ -216,7 +216,8 @@ export default function ComposePage() {
           Exchange-Agnostic Architecture
         </h3>
         <p className="text-xs text-[var(--text-muted)] mb-6">
-          Vaults route trades through a VenueAdapter interface. Adding a new DEX means implementing 6 methods — the strategy code never changes.
+          Vaults route trades through a VenueAdapter interface across 3 fundamentally different architectures.
+          Adding a new DEX means implementing 6 methods — the strategy code never changes.
         </p>
 
         {/* Architecture Diagram */}
@@ -247,9 +248,9 @@ export default function ComposePage() {
 
             {/* Right: Venues */}
             <div className="flex flex-col gap-2">
-              <VenueBox name="Percolator" type="perp" sub="Formally verified" />
+              <VenueBox name="Percolator" type="perp" sub="Slab-based risk engine" />
               <VenueBox name="Phoenix" type="spot" sub="CLOB orderbook" />
-              <VenueBox name="Jupiter Perps" type="perp" sub="Oracle-based" />
+              <VenueBox name="Jupiter Perps" type="perp" sub="Oracle-based AMM" />
               <div className="px-4 py-2 border border-dashed border-[var(--border)] rounded-lg text-center text-[var(--text-dim)]">
                 + Your DEX here
               </div>
