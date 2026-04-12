@@ -11,6 +11,22 @@ import { disc, SYNTX_PROGRAM_ID } from "./constants";
 // Instruction builders — return TransactionInstruction ready to add to a TX
 // =============================================================================
 
+/**
+ * Create a new Syntx vault.
+ *
+ * The vault PDA is derived from `[b"vault", collateral_mint, manager]`.
+ * The share mint must be pre-created with the vault PDA as mint authority.
+ *
+ * @param params.manager - Manager keypair (signer, payer for PDA rent)
+ * @param params.vaultPda - Derived vault PDA address
+ * @param params.collateralMint - SPL token mint for vault collateral (e.g., USDC)
+ * @param params.shareMint - SPL token mint for vault shares (vault PDA is authority)
+ * @param params.percolatorSlab - Percolator market slab account
+ * @param params.percolatorProgram - Percolator program ID
+ * @param params.performanceFeeBps - Performance fee in basis points (e.g., 2000 = 20%)
+ * @param params.managementFeeBps - Annual management fee in basis points (e.g., 200 = 2%)
+ * @param params.depositCap - Maximum total deposits (0 = unlimited)
+ */
 export function createInitVaultIx(params: {
   manager: PublicKey;
   vaultPda: PublicKey;
@@ -46,6 +62,20 @@ export function createInitVaultIx(params: {
   });
 }
 
+/**
+ * Deposit collateral into a Syntx vault. Mints proportional share tokens to the user.
+ *
+ * @param params.user - Depositor's public key (signer)
+ * @param params.amount - Collateral amount in native units (e.g., 1_000_000 = 1 USDC)
+ * @param params.vaultPda - Vault PDA address
+ * @param params.userCollateral - User's collateral token account (ATA)
+ * @param params.userShares - User's share token account (ATA, created if needed)
+ * @param params.vaultCollateral - Vault's collateral token account (PDA-owned ATA)
+ * @param params.shareMint - Share token mint address
+ * @param params.percolatorSlab - Percolator market slab
+ * @param params.percolatorVault - Percolator vault's collateral ATA
+ * @param params.percolatorProgram - Percolator program ID
+ */
 export function createDepositIx(params: {
   user: PublicKey;
   vaultPda: PublicKey;
@@ -84,6 +114,23 @@ export function createDepositIx(params: {
   });
 }
 
+/**
+ * Withdraw from a Syntx vault by burning share tokens.
+ * Returns proportional collateral based on current share price.
+ *
+ * @param params.user - Withdrawer's public key (signer)
+ * @param params.sharesToBurn - Number of share tokens to burn
+ * @param params.vaultPda - Vault PDA address
+ * @param params.userShares - User's share token account (ATA)
+ * @param params.userCollateral - User's collateral token account (ATA)
+ * @param params.vaultCollateral - Vault's collateral token account
+ * @param params.shareMint - Share token mint address
+ * @param params.percolatorSlab - Percolator market slab
+ * @param params.percolatorVault - Percolator vault's collateral ATA
+ * @param params.percolatorVaultAuthority - Percolator vault PDA (authority)
+ * @param params.oracle - Oracle price feed account
+ * @param params.percolatorProgram - Percolator program ID
+ */
 export function createWithdrawIx(params: {
   user: PublicKey;
   vaultPda: PublicKey;
@@ -126,6 +173,17 @@ export function createWithdrawIx(params: {
   });
 }
 
+/**
+ * Collect accumulated performance and management fees.
+ * Mints new share tokens to the manager proportional to fees earned.
+ * Only callable by the vault manager.
+ *
+ * @param params.manager - Vault manager (signer)
+ * @param params.vaultPda - Vault PDA address
+ * @param params.shareMint - Share token mint address
+ * @param params.managerShares - Manager's share token account (receives fee shares)
+ * @param params.vaultEquity - Current vault equity (used for HWM calculation)
+ */
 export function createCollectFeesIx(params: {
   manager: PublicKey;
   vaultPda: PublicKey;
