@@ -1,115 +1,64 @@
-# Syntx — Colosseum Frontier Hackathon Updates
+# Syntx — Solana Frontier Hackathon Updates
 
-## Week 1 Update Script (1 minute)
+## Weekly Progress Videos
 
-### Video: screen recording of frontend + talking over it
+### Week 1: Venue Adapter Pattern
+- VenueAdapter interface (6 methods any DEX implements)
+- PercolatorAdapter (slab parsing, oracle, crank, trade)
+- Venue-agnostic keeper loop
+- Factory pattern: VENUE=percolator|phoenix
 
----
-
-**[0:00 - 0:10] Hook**
-
-"Solana needs a composable perp layer. We built one on Percolator — the Solana founder's own risk engine."
-
-**[0:10 - 0:25] What is Syntx**
-
-"Syntx is a composable perp vault protocol on Solana. It's built on Percolator — the formally verified risk engine by Solana co-founder Anatoly Yakovenko."
-
-*(Show: landing page hero)*
-
-"Anyone can create a strategy vault. Users deposit. A keeper trades perps on their behalf. Profits are shared through share tokens."
-
-**[0:25 - 0:40] Live demo**
-
-*(Show: /vaults page, click vault, show stats)*
-
-"This is live on devnet right now. The vault has real positions. The keeper is running — pushing oracle prices, cranking funding, executing trades based on funding rate signals."
-
-*(Show: deposit flow — enter amount, click deposit, wallet confirms)*
-
-"Deposit works from the browser. Withdraw works. Share tokens are standard SPL tokens."
-
-**[0:40 - 0:55] Composability — the differentiator**
-
-*(Show: /compose page)*
-
-"But here's what makes Syntx different from every other perp DEX. Composability. Other protocols can CPI into Syntx — atomic hedging, leveraged yield, treasury management. This is something Hyperliquid can structurally never offer."
-
-**[0:55 - 1:00] Close**
-
-"Fifteen on-chain instructions. Twenty passing tests. Six frontend pages. Live keeper. All built on the Solana founder's own risk engine. Syntx — the composable perp layer Solana needs."
-
----
-
-## Week 2 Update Script (draft — refine based on progress)
-
-**Focus: Keeper strategy + composability in action**
-
-- Show keeper logs: funding rate detection, position decisions
-- Show a Jupiter swap → deposit flow
-- Show vault share price moving with PnL
-- "This week we ported our Yogi keeper strategy — funding rate harvest with vol regime detection"
-
-## Week 3 Update Script (draft)
-
-**Focus: Security + permissionless vaults**
-
-- Show circuit breaker configuration
-- Show CPI whitelist
-- Show someone creating a new vault from /create
-- "This week we hardened security — automatic circuit breakers, CPI whitelist, drawdown limits"
-
-## Week 4 Update Script (draft)
-
-**Focus: Ready for users**
-
-- Clean frontend demo end-to-end
-- Show /earn portfolio view
-- Show documentation
-- "Syntx is ready for devnet users. Audit is the next step before mainnet."
+### Week 2: Phoenix + Router + Frontend
+- PhoenixAdapter (Phoenix V1 spot SDK)
+- VenueRouter (multi-venue scoring and routing)
+- Frontend reframed: "Composable Exchange-Agnostic Vaults"
+- Vault UX: named vaults, Max button, dollar withdraw, toasts
+- 2 live vaults on devnet
+- SDK completed (buildDepositTx, buildWithdrawTx)
+- 25 tests passing
+- README rewrite + business plan
+- CPI examples + venue adapter skeleton
+- CONTRIBUTING.md, JSDoc, error boundaries
 
 ---
 
 ## Demo Video Script (2-3 min, for final submission)
 
-### Section 1: Problem (30s)
+### Section 1: Problem (20s)
 
-"Solana has the deepest retail user base in crypto, but no composable perp layer for programmatic strategies. Vault builders, delta-neutral strategies, and lending integrations need a perps primitive that composes with the rest of the DeFi stack. That's what we're building."
+"Every Solana perp venue builds in isolation. Your vault only works on one DEX. When that DEX goes down, your strategy dies. Solana now has Phoenix, Jupiter Perps, Drift, Percolator — but no shared vault infrastructure."
 
-### Section 2: Solution (45s)
+### Section 2: Solution (30s)
 
-"Syntx is a permissionless vault protocol for perpetual futures. Built on Percolator — the formally verified risk engine by Anatoly Yakovenko, Solana's co-founder."
+"Syntx is a composable exchange-agnostic vault layer. Vaults route trades across any venue through a VenueAdapter interface — Percolator for perps, Phoenix for spot, Jupiter Perps when available. Same strategy, best execution."
 
-"Three actors: vault managers create vaults and set fees. Users deposit and receive share tokens. Keepers run automated strategies — funding rate harvest, delta-neutral, market making."
-
-"The key innovation is the vault PDA pattern. A program-derived address owns the Percolator trading account. No human holds the private key. Only the vault program can sign trades. The manager can trade but cannot steal."
+"The vault is a Program-Derived Address. No private key. The VenueRouter scores each DEX by funding rate, liquidity, and cost — then routes to the best one automatically."
 
 ### Section 3: Live Demo (60s)
 
-*(Screen recording of frontend)*
+*(Screen recording of fabrknt.com/vaults)*
 
-1. Show landing page — hero, stats
-2. Navigate to /vaults — show vault list
-3. Click vault — show stats, position, funding rate
-4. Deposit — enter amount, wallet signs, shares minted
-5. Show /earn — portfolio view
-6. Withdraw — burn shares, USDC returned
-7. Show /compose — composability recipes
+1. Landing page — "Composable Exchange-Agnostic Vaults on Solana", venue architecture diagram
+2. Vault marketplace — 2 named vaults (SOL Funding Rate, SOL Delta Neutral) with Percolator badges
+3. Click vault — share price, equity, position, funding rate
+4. Deposit — enter amount, Max button, wallet confirms, toast with Explorer link
+5. Compose page — architecture diagram (Users → Syntx → [Percolator | Phoenix | Jupiter])
+6. CPI code snippets — cpi_trade, get_share_price, deposit
+7. VenueAdapter interface — "add a new DEX in 6 methods"
 
-### Section 4: Composability (30s)
+### Section 4: Composability + Multi-Venue (30s)
 
-"What makes Syntx unique is composability. Any Solana program can CPI into Syntx."
+"Two layers of composability. First, any program can CPI into Syntx — atomic hedging, leveraged yield, treasury management. Second, vaults route across multiple DEXes — exchange-agnostic by design."
 
-"Jupiter swap → deposit: any token accepted."
-"Kamino auto-hedge: atomic hedging in one transaction."
-"Vault shares as collateral: borrow against your position."
+*(Show: VenueAdapter code, Phoenix scoring in router)*
 
-"This is what purpose-built chains like Hyperliquid can never offer."
+"This is something no purpose-built chain can offer — and no single-venue vault provides."
 
-### Section 5: Tech + Close (15s)
+### Section 5: Track Record + Close (20s)
 
-"Fifteen on-chain instructions. Twenty tests. Funding rate harvest keeper running live. All open source, Apache 2.0, built on the Solana founder's own stack."
+"This isn't our first vault. Yogi runs live on Drift mainnet. Kodiak runs live on Hyperliquid. Syntx is the architecture we wished existed — exchange-agnostic from day one."
 
-"Syntx — the composable perp layer Solana needs."
+"Fifteen instructions. Twenty-five tests. Three venue adapters. Full SDK. Live on devnet. Syntx — composable exchange-agnostic vaults on Solana."
 
 ---
 
@@ -117,38 +66,36 @@
 
 ### Who we are (20s)
 
-"I'm Hiro from Fabrknt. I've built vault strategies across multiple perp protocols — Yogi, Kodiak, and Polar. Five custom Percolator matchers. I know the perps stack inside out."
+"I'm Hiro from Fabrknt. I've built and operated production vaults on Drift and Hyperliquid — Yogi and Kodiak. Five custom Percolator matchers. Twenty-nine published infrastructure packages. I know the vault stack inside out."
 
 ### Problem (30s)
 
-"Solana needs a composable perps layer for programmatic strategies. Existing solutions are either oracle-AMM with design ceilings, or not yet live. There's a gap — and it's exactly where composability matters most."
+"Every Solana perp venue builds in isolation. Strategy managers rebuild identical vault infrastructure for each DEX — deposit logic, share accounting, keeper loops, risk management. When Drift was exploited, single-venue vaults lost access overnight."
 
-"Twenty protocols lost their hedging infrastructure overnight. Vault builders, DN strategies, lending protocol integrations — all broken."
+"Solana now has multiple high-quality perp venues — but no shared vault layer to compose across them."
 
 ### Solution (40s)
 
-"Syntx fills this gap. A permissionless vault protocol for perp trading, built on Anatoly Yakovenko's Percolator — the only formally verified perp risk engine on Solana."
+"Syntx is a composable exchange-agnostic vault layer. Vaults route trades across any venue through a VenueAdapter interface. Today: Percolator and Phoenix. Tomorrow: Jupiter Perps, Drift, any new DEX."
 
-"Anyone can create a vault. Set their fees. Run their keeper. Users deposit and earn yield. The vault PDA pattern ensures the manager can trade but cannot steal."
+"The VenueRouter scores each venue by funding rate, liquidity, and insurance — then routes to the best one. The vault is a PDA. No private key. Circuit breakers, CPI whitelist, configurable trade limits."
 
-### Why composable (30s)
-
-"The real moat is composability. Syntx vaults are CPI-accessible. Kamino can auto-hedge via cpi_trade. Vault shares are standard SPL tokens — usable as collateral on Marginfi. Jupiter routes any token into vault deposits."
-
-"Hyperliquid has better execution, but it can never compose. That's the bet — Solana's infrastructure catches up on execution while composability is an unforkable advantage."
+"Other protocols compose via CPI. A lending protocol can auto-hedge through a vault. A treasury can deploy idle capital. All in one atomic transaction."
 
 ### Traction (20s)
 
-"Live on devnet. Fifteen instructions, twenty tests. Keeper running with funding rate strategy. Six-page frontend — deposit, withdraw, compose, create — all from the browser."
+"Live on devnet. Two vaults with deposits. Fifteen Anchor instructions. Twenty-five tests. Three venue adapters. Complete TypeScript SDK. Five frontend pages at fabrknt.com/vaults."
 
-"Built in one session. Forty-four commits."
+"CPI examples and venue adapter skeletons in the repo. Business plan. CONTRIBUTING guide."
+
+### Business Model (20s)
+
+"Protocol-managed vaults charge two percent management and twenty percent performance fees — enforced on-chain. Third-party vault creators set their own fees. Syntx takes a half-percent protocol fee. Long-term: institutional CPI access fees."
 
 ### Ask (20s)
 
-"We need an audit — fifty to a hundred thousand dollars. The code is spec-aligned with Percolator v12.1.0. The vault program is small — fifteen instructions. An audit unlocks mainnet."
-
-"Syntx is the composable perp layer Solana needs. We built it. Now we need to secure it."
+"We need audit funding — fifty to a hundred thousand dollars. The code is fifteen instructions. An audit unlocks mainnet. We're applying to the Colosseum accelerator for funding, distribution, and first institutional integrators."
 
 ### Close (10s)
 
-"Syntx. Composable perp vaults on Solana. Built on Percolator. Open source."
+"Syntx. Composable exchange-agnostic vaults on Solana. The vault layer every perp venue needs. Built by Fabrknt. Open source."

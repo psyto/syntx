@@ -176,13 +176,24 @@ syntx/
 │       ├── vaults/page.tsx     # Vault marketplace (named vaults, venue badges)
 │       ├── compose/page.tsx    # Architecture diagram, CPI snippets, recipes
 │       ├── earn/page.tsx       # Portfolio view
-│       └── create/page.tsx     # Vault creation wizard
+│       ├── create/page.tsx     # Vault creation wizard
+│       └── components/
+│           ├── ErrorBoundary.tsx # Graceful RPC failure handling
+│           ├── VaultList.tsx     # Named vaults with venue badges
+│           └── VaultDashboard.tsx # Deposit/withdraw with Max, toasts
+├── examples/
+│   ├── cpi-caller/             # Anchor program + TS client for CPI into Syntx
+│   │   ├── lib.rs              # hedge_via_syntx instruction
+│   │   └── client.ts           # Transaction builder
+│   └── venue-adapter/          # How to add a new DEX
+│       └── drift-adapter.ts    # DriftAdapter skeleton (6 methods)
 └── docs/
     ├── BUILD-PLAN.md
     ├── HOW-IT-WORKS.md
     ├── VAULT-ARCHITECTURE.md
     ├── SECURITY-ASSESSMENT.md
-    └── BUSINESS-PLAN.md
+    ├── BUSINESS-PLAN.md
+    └── HACKATHON-UPDATES.md
 ```
 
 ## Tech Stack

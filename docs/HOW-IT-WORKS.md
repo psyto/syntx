@@ -275,34 +275,51 @@ to close positions before large withdrawals can be processed.
 
 ## 8. The Keeper Bot
 
-The keeper is a TypeScript program that runs 24/7 (on EC2 or similar). It:
+The keeper is a TypeScript program that runs 24/7. It is **venue-agnostic** — it calls a `VenueAdapter` interface instead of venue-specific code. The same keeper works with Percolator, Phoenix, or any future DEX.
+
+### Venue Adapters
+
+The keeper supports three modes:
+
+| Mode | Env Var | What |
+|---|---|---|
+| Single venue (Percolator) | `VENUE=percolator` | Trade on Percolator only |
+| Single venue (Phoenix) | `VENUE=phoenix` | Trade on Phoenix V1 spot only |
+| Multi-venue router | `VENUE=router` | Score all venues, route to best |
+
+Adding a new venue means implementing the `VenueAdapter` interface (6 methods):
+- `initialize()` — connect and validate
+- `getPrice(market)` — current price
+- `getPosition()` — vault's position on this venue
+- `getVenueState()` — funding rate, liquidity, insurance
+- `trade(size)` — execute a trade
+- `crank()` — venue maintenance (oracle push, funding settlement)
+
+See `examples/venue-adapter/drift-adapter.ts` for a skeleton.
 
 ### Every 30 Seconds:
 
 ```
-1. READ SLAB STATE
-   → Fetch the slab account from Solana RPC
-   → Parse: vault capital, position, PnL, funding rate, insurance balance
+1. READ POSITION (via VenueAdapter)
+   → getPosition(): capital, PnL, position size
 
-2. PUSH ORACLE PRICE
-   → In devnet: push price directly (oracle authority mode)
-   → In production: price comes from Pyth oracle
-   → This ensures the slab has a fresh price for trading
+2. READ VENUE STATE (via VenueAdapter)
+   → getVenueState(): funding rate, liquidity, insurance
+   → If VENUE=router: score all venues, select best
 
-3. CRANK FUNDING
-   → Call Percolator KeeperCrank (permissionless)
-   → This settles funding payments between longs and shorts
-   → If vault is on the receiving side, PnL increases
+3. CRANK (via VenueAdapter)
+   → Push oracle, settle funding, refresh data
+   → If VENUE=router: crank ALL venues
 
-4. EVALUATE STRATEGY
+4. EVALUATE STRATEGY (venue-agnostic)
    → Check funding rate direction and magnitude
-   → Check position health (margin utilization)
-   → Decide: open position, close position, or hold
+   → Vol regime × signal severity → deployment %
+   → Decide: open, close, or hold
 
-5. TRADE (if strategy says to)
-   → Call Syntx manager_trade via the vault program
-   → Vault PDA signs the Percolator trade
-   → Position updated on-chain
+5. TRADE (via VenueAdapter)
+   → trade(size): venue-specific execution
+   → Percolator: CPI through vault PDA
+   → Phoenix: swap on spot orderbook
 ```
 
 ### Keeper Config (.env)
@@ -316,6 +333,8 @@ PERCOLATOR_SLAB=J55KavPouZg8ZeWnTY77ZBL2DdQskzKpkFvuTtbUNzYC
 VAULT_PDA=4pL2aQawAbc2XwjRE9ptrH4yxihn4BL2uVMavgZrtYUK
 COLLATERAL_MINT=2uGTCDSfisKCTN2Yd8umXiWJzfRpWe8mhZM6WCK2vj8D
 CRANK_INTERVAL_MS=30000
+VENUE=percolator                    # or phoenix, or router
+PHOENIX_MARKET=4DoNfFBfF7UokCC2...  # required for phoenix/router
 ```
 
 ---

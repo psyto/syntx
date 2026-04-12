@@ -2,7 +2,7 @@
 
 ## Program Overview
 
-The Syntx vault program (`programs/syntx-vault/src/lib.rs`) is an Anchor-based Solana program that provides a vault layer on top of Percolator. It has 15 instructions and one state account.
+The Syntx vault program (`programs/syntx-vault/src/lib.rs`) is an Anchor-based Solana program that provides a composable exchange-agnostic vault layer on Solana. It has 15 instructions and one state account. Vaults route trades across execution venues (Percolator, Phoenix, Jupiter Perps) through a VenueAdapter interface in the off-chain keeper.
 
 ## State: VaultState
 
@@ -146,6 +146,43 @@ Account (280 bytes):
   owner:        +208 ([u8; 32])
 ```
 
+## Exchange-Agnostic Venue Layer (Off-Chain)
+
+The on-chain vault program is venue-agnostic in design — it CPI calls into whatever Percolator program is configured. The off-chain keeper extends this with a multi-venue routing layer:
+
+```
+Keeper (TypeScript)
+  └── VenueRouter (implements VenueAdapter)
+       ├── PercolatorAdapter → Percolator (on-chain perp)
+       ├── PhoenixAdapter    → Phoenix V1 (on-chain spot)
+       └── [future]          → Jupiter Perps, Drift, etc.
+```
+
+### VenueAdapter Interface
+
+```typescript
+interface VenueAdapter {
+  readonly name: string;
+  readonly type: "perp" | "spot" | "hybrid";
+  initialize(): Promise<void>;
+  getPrice(market: string): Promise<number>;
+  getPosition(): Promise<Position | null>;
+  getVenueState(): Promise<VenueState>;
+  trade(size: bigint): Promise<OrderResult>;
+  crank(): Promise<void>;
+}
+```
+
+### VenueRouter Scoring
+
+Each tick, the router scores all venues:
+- **Perp venues**: funding rate magnitude (higher = more yield)
+- **All venues**: orderbook depth / account count (liquidity proxy)
+- **Perp venues**: insurance balance bonus (safety)
+- **Spot venues**: baseline score
+
+Highest-scoring venue receives the trade. All venues are cranked regardless.
+
 ## Build & Test
 
 ```bash
@@ -155,5 +192,5 @@ cargo-build-sbf --tools-version v1.53 -- --manifest-path programs/syntx-vault/Ca
 # Test (requires percolator_prog.so)
 cargo test -p syntx-vault --test integration
 
-# 20 tests: lifecycle, fees, access control, input validation, multi-user
+# 25 tests: lifecycle, fees, access control, circuit breakers, multi-user
 ```
