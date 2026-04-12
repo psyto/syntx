@@ -1,89 +1,76 @@
-# Syntx — Composable Perp Vaults on Solana
+# Syntx — Composable Exchange-Agnostic Vaults on Solana
 
-Syntx is a permissionless vault protocol for perpetual futures on Solana. It adds a composable vault layer on top of [Percolator](https://github.com/aeyakovenko/percolator), the formally-verified perp risk engine built by Solana co-founder Anatoly Yakovenko.
+> **Built for the [Solana Frontier Hackathon](https://www.colosseum.org/frontier) (Apr 6 – May 11, 2026)**
 
-**Part of the [Fabrknt](https://fabrknt.com) platform — live at [fabrknt.com/vaults](https://fabrknt.com/vaults) (devnet).**
+Strategy vaults that route across any perp execution venue — Percolator, Phoenix, Jupiter Perps. One vault, best execution, full CPI composability.
 
-## Platform Context
+**Live on devnet:** [fabrknt.com/vaults](https://fabrknt.com/vaults)  
+**GitHub:** [github.com/psyto/syntx](https://github.com/psyto/syntx)
 
-Syntx is one of three products on the Fabrknt platform:
-
-| Product | URL | What |
-|---|---|---|
-| **Flow** | [fabrknt.com/flow](https://fabrknt.com/flow) | Capital flow intelligence for Hyperliquid |
-| **Learn** | [fabrknt.com/learn](https://fabrknt.com/learn) | Cross-protocol perp DEX education |
-| **Syntx** | [fabrknt.com/vaults](https://fabrknt.com/vaults) | Composable perp vaults on Solana (this repo) |
-
-All three share the Fabrknt dark theme (`#050a0e` background, `#22d3ee` cyan accent) and a unified header navigation: **Flow / Learn / Syntx / Dashboard / GitHub**.
-
-### Deployment
-
-- **User-facing URL:** `fabrknt.com/vaults` (via Vercel with `basePath: '/vaults'`)
-- **Internal Vercel backend:** `syntx.fabrknt.com` (not user-facing)
-- **Status:** Devnet only. Not mainnet.
+---
 
 ## The Problem
 
-Solana needs a composable perpetual futures layer. Existing perps are either oracle-AMM (unsuitable for programmatic strategies) or not yet live. Vault builders, delta-neutral strategies, and lending protocol integrations need a composable perps primitive that works with the rest of Solana's DeFi stack.
+Every Solana perp venue builds in isolation. Drift vaults only trade on Drift. Jupiter vaults only trade on Jupiter. Strategy managers rebuild identical infrastructure for each DEX. When a venue goes down, single-venue vaults lose access entirely.
+
+Solana now has multiple high-quality perp venues — Phoenix, Jupiter Perps, Percolator, Drift — but no shared vault infrastructure to compose across them.
 
 ## What Syntx Does
 
-Anyone can create a **strategy vault** that trades perps on Percolator:
+Syntx separates **vault management** from **trade execution**:
+
+```
+Depositors ──→ Syntx Vault (PDA) ──→ VenueRouter ──→ Percolator (perp)
+                    │                      │      ──→ Phoenix (spot)
+               SPL Shares                  │      ──→ Jupiter Perps (perp)
+               Fee accounting              │      ──→ + any new venue
+               Circuit breakers            │
+                    │                      └── Scores by: funding rate,
+DeFi Protocols ────CPI────→ cpi_trade          liquidity, cost
+(Kamino, Marginfi)
+```
 
 1. **Vault managers** create vaults, set fees, run keeper strategies
-2. **Users** deposit collateral, receive share tokens proportional to vault equity
-3. **Keepers** trade on Percolator using the vault's capital (funding rate harvest, delta-neutral, market making)
-4. **Other protocols** compose with Syntx via CPI — atomic hedging, leveraged yield, treasury management
+2. **Depositors** deposit USDC, receive SPL share tokens (usable as collateral elsewhere)
+3. **VenueRouter** scores each DEX and routes trades to best execution
+4. **Other protocols** compose via CPI — atomic hedging, leveraged yield, treasury management
 
-Think of it as a **composable hedge fund infrastructure** — Percolator is the exchange, Syntx is the vault layer.
+## Exchange-Agnostic Architecture
 
-## Why Syntx Has a Moat
+The core innovation is the **VenueAdapter** interface. Adding a new DEX means implementing 6 methods — the strategy code never changes:
 
-Anyone can build on Percolator. But Syntx ships with **29 infrastructure packages and 5 custom matchers** already built, plus proven vault intelligence validated on mainnet:
+```typescript
+interface VenueAdapter {
+  readonly name: string;
+  readonly type: "perp" | "spot" | "hybrid";
 
-| Component | From | What It Provides |
-|-----------|------|------------------|
-| [Tensor](https://github.com/fabrknt/tensor) | @fabrknt/tensor | Portfolio margin (Greeks, vol surface, delta-netting) |
-| [Tempest](https://github.com/fabrknt/tempest) | @fabrknt/tempest | Dynamic fee curves (5 vol regimes) |
-| [Veil](https://github.com/fabrknt/veil) | @fabrknt/veil | Encrypted orders, ZK proofs |
-| [Sentinel](https://github.com/fabrknt/sentinel) | @fabrknt/sentinel | Pre-transaction security (17 patterns, MEV protection) |
-| [Stratum](https://github.com/fabrknt/stratum) | @fabrknt/stratum | Orderbook state compression (800x reduction) |
-| [percolator-fabrknt](https://github.com/psyto/percolator-fabrknt) | 5 matchers | Custom matching strategies on Percolator devnet |
-| [Yogi](https://github.com/psyto/yogi) | Proven vault | Regime engine, anomaly detection, multi-asset DN (Drift mainnet) |
-| [Kodiak](https://github.com/psyto/kodiak) | Proven vault | 5-layer yield, tilt, liquidation detection (HL mainnet) |
-| [Flow](https://github.com/fabrknt/flow) | Intelligence | Capital flow signals, stress classification, AI analysis |
-| [PerpU](https://github.com/fabrknt/perpu) | Education | User base + developer community (182+ lessons) |
+  initialize(): Promise<void>;
+  getPrice(market: string): Promise<number>;
+  getPosition(): Promise<Position | null>;
+  getVenueState(): Promise<VenueState>;
+  trade(size: bigint): Promise<OrderResult>;
+  crank(): Promise<void>;
+}
+```
 
-A competitor building on Percolator from scratch would need months to replicate this stack.
+**Implemented adapters:**
+
+| Adapter | Venue | Type | Status |
+|---|---|---|---|
+| `PercolatorAdapter` | Percolator (Anatoly Yakovenko) | perp | Live on devnet |
+| `PhoenixAdapter` | Phoenix V1 (Ellipsis Labs) | spot | Integrated |
+| `VenueRouter` | Multi-venue scoring | hybrid | Live |
+
+Switch venues with one env var: `VENUE=percolator`, `VENUE=phoenix`, or `VENUE=router` (multi-venue).
 
 ## Why Composable Matters
-
-Syntx creates composable strategy vaults that interact with the entire Solana DeFi stack — not isolated perp markets.
 
 | Purpose-built chains (Hyperliquid) | Syntx on Solana |
 |---|---|
 | Perp position is isolated | Perp position composes with lending, spot, LSTs |
 | Need bridges for cross-protocol | Atomic in one transaction via CPI |
 | Can't use position as collateral | Vault shares are SPL tokens — usable anywhere |
-| Integration needs bridges + time | Any program calls `cpi_trade` in the same block |
-
-## Architecture
-
-```
-Users deposit → Syntx Vault Program → CPI → Percolator Program
-                      │                          │
-                 Share tokens              Risk engine (H/A/K)
-                 Fee accounting            Funding rate
-                 Circuit breakers          Liquidation
-                 CPI interface             Oracle (Pyth)
-                      │
-                 Keeper Bot            Composability:
-                 (strategies)          Jupiter, Kamino,
-                      │                Marginfi, Phoenix
-                      ▼
-                 Trading PnL →
-                 Share price moves
-```
+| Locked to one venue | VenueRouter picks best execution across DEXes |
 
 ## Vault Program (15 Instructions)
 
@@ -105,106 +92,48 @@ Users deposit → Syntx Vault Program → CPI → Percolator Program
 
 ## Security Model
 
-### What protects users
-
 | Threat | Protection |
 |---|---|
 | Manager steals funds | Vault PDA has no private key — withdrawals go to share holders |
-| Exchange insolvency | Percolator H ratio — capital is senior, profit is junior. No user withdraws more than exists. |
-| Excessive drawdown | **Circuit breaker** — auto-rejects trades beyond max drawdown from peak |
-| Malicious CPI callers | **CPI whitelist** — vault manager restricts which programs can trade |
-| Oversized CPI trades | **Configurable size limit** — per-vault max trade size |
-| Bad trades | Performance fee aligns manager incentives with depositors |
+| Exchange insolvency | Percolator H ratio — mathematically proven fair exits |
+| Excessive drawdown | Circuit breaker — auto-rejects trades beyond max drawdown |
+| Malicious CPI callers | CPI whitelist — vault manager restricts which programs can trade |
+| Oversized CPI trades | Configurable per-vault max trade size |
 
-### What does NOT protect users (honest assessment)
-
-| Risk | Status |
-|---|---|
-| Smart contract bugs in Syntx | **Unaudited.** 20 tests pass but tests != audit. Audit required before mainnet. |
-| Keeper failure during volatility | Keeper has retry logic but no redundancy. Single point of failure. |
-| Oracle manipulation | Depends on Percolator's oracle checks. Authority mode (devnet) is centralized. |
-| Composability risk propagation | CPI whitelist + size limits reduce but don't eliminate cross-program risk. |
+**Honest assessment:** Syntx is unaudited. 20+ tests pass but tests != audit. Security audit (~$50-100K) is required before mainnet. See [SECURITY-ASSESSMENT.md](docs/SECURITY-ASSESSMENT.md).
 
 ## Composability Recipes
 
 | Recipe | Protocols | Status |
 |---|---|---|
 | Any Token → Vault | Jupiter + Syntx | Live |
+| Spot + Perp Arbitrage | Phoenix + Syntx + Percolator | Architecture ready |
 | One-Click Delta Neutral | Jupiter + Syntx + Percolator | Coming soon |
 | Leveraged Vault Yield | Syntx + Kamino | Coming soon |
 | Protocol Treasury Hedge | Squads + Syntx | Coming soon |
 | Lending Auto-Hedge | Kamino CPI → Syntx | Coming soon |
-| Spot + Perp Arbitrage | Phoenix + Syntx | Coming soon |
 
-## Frontend (6 Pages)
+## Quick Start
 
-Deployed at [fabrknt.com/vaults](https://fabrknt.com/vaults) with the Fabrknt dark theme and shared platform navigation.
+```bash
+# Clone
+git clone https://github.com/psyto/syntx.git && cd syntx
 
-| Page | Route | What |
-|---|---|---|
-| Landing | `/vaults` | Hero, stats, features, composability showcase |
-| Marketplace | `/vaults/vaults` | Vault marketplace — browse, click to expand, deposit/withdraw |
-| Compose | `/vaults/compose` | 6 composability recipes with step-by-step flows |
-| Earn | `/vaults/earn` | Your positions across all vaults |
-| Create | `/vaults/create` | 4-step vault creation wizard (fully on-chain) |
+# Run tests (requires Percolator binary)
+cargo test -p syntx-vault --test integration
 
-## Keeper Bot
+# Run keeper (devnet, Percolator venue)
+cd keeper && npm install && npx ts-node src/index.ts
 
-Funding Rate Harvest strategy (ported from Yogi):
+# Run keeper (multi-venue router mode)
+VENUE=router PHOENIX_MARKET=4DoNfFBfF7UokCC2FQzriy7yHK6DY6NVdYpuekQ5pRgg \
+  npx ts-node src/index.ts
 
-```
-Every 30 seconds:
-  1. Read slab state (position, PnL, funding rate)
-  2. Push oracle price (with retry, 3 attempts)
-  3. Crank funding settlement
-  4. Strategy decision:
-     - Funding > 0 → SHORT (collect from longs)
-     - Funding < 0 → LONG (collect from shorts)
-     - Funding ≈ 0 → hold (no edge)
-  5. Scale by: vol regime × signal severity → deployment %
-     - low/none: 80%, normal/none: 60%, high/none: 30%, extreme: 0%
-```
+# Run frontend (local dev)
+cd app && npm install && npx next dev
 
-## Tests (20/20 Passing)
-
-**Positive tests:** full lifecycle, fees, pause, update manager, share price oracle, multi-user deposits, get_share_price.
-
-**Negative tests:** unauthorized trade, unauthorized pause, unauthorized fees, unauthorized manager update, deposit when paused, deposit over cap, zero deposit, insufficient shares, double init.
-
-## Project Structure
-
-```
-syntx/
-├── programs/syntx-vault/
-│   ├── src/lib.rs              # Vault program (15 instructions)
-│   └── tests/integration.rs    # 20 LiteSVM tests
-├── keeper/
-│   ├── src/
-│   │   ├── keeper.ts           # Main loop (oracle, crank, trade)
-│   │   ├── strategy.ts         # Funding Rate Harvest strategy
-│   │   ├── slab.ts             # Percolator slab parser
-│   │   ├── abi.ts              # Instruction encoders
-│   │   ├── setup-devnet.ts     # Devnet deployment
-│   │   └── setup-multi-market.ts # BTC/ETH market deployment
-│   └── devnet-vault.json       # Deployed addresses
-├── sdk/
-│   └── src/
-│       ├── client.ts           # SyntxClient class
-│       ├── instructions.ts     # TX builders
-│       ├── accounts.ts         # On-chain parsers + vault discovery
-│       └── constants.ts        # PDA derivation
-├── app/
-│   └── src/app/
-│       ├── page.tsx            # Landing page
-│       ├── vaults/page.tsx     # Vault marketplace
-│       ├── compose/page.tsx    # Composability recipes
-│       ├── earn/page.tsx       # Portfolio view
-│       ├── create/page.tsx     # Vault creation wizard
-│       └── components/         # Nav, Footer, VaultDashboard, VaultList, SwapDeposit
-└── docs/
-    ├── BUILD-PLAN.md           # Roadmap + current status
-    ├── HOW-IT-WORKS.md         # Complete guide
-    └── VAULT-ARCHITECTURE.md   # Technical spec
+# Deploy new vault to devnet
+cd keeper && npx ts-node src/setup-devnet.ts
 ```
 
 ## Devnet Deployment
@@ -213,59 +142,97 @@ syntx/
 |---|---|
 | Syntx Vault Program | `53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V` |
 | Percolator Program | `Edq18N2pdT3Sz9EukbZe4YsQkvmxvmmkUL1KHpv96xJF` |
-| Vault PDA | `4pL2aQawAbc2XwjRE9ptrH4yxihn4BL2uVMavgZrtYUK` |
-| Percolator Slab (SOL-PERP) | `J55KavPouZg8ZeWnTY77ZBL2DdQskzKpkFvuTtbUNzYC` |
+| SOL Funding Rate Vault | `4pL2aQawAbc2XwjRE9ptrH4yxihn4BL2uVMavgZrtYUK` |
+| SOL Delta Neutral Vault | `9g39fL79XnwHBLCPT1GqixEmJp7z5LLzjWWiaMpcKDhK` |
+| Phoenix SOL/USDC Market | `4DoNfFBfF7UokCC2FQzriy7yHK6DY6NVdYpuekQ5pRgg` |
 
-## Dependencies
+## Project Structure
 
-All Apache 2.0, by Anatoly Yakovenko:
-
-| Repo | What |
-|---|---|
-| [percolator](https://github.com/aeyakovenko/percolator) | Risk engine — H (fair exits via pro-rata profit haircut) + A/K (fair overhang clearing via lazy side indices) |
-| [percolator-prog](https://github.com/aeyakovenko/percolator-prog) | Solana program (6.3K LOC) |
-| [percolator-cli](https://github.com/aeyakovenko/percolator-cli) | CLI tools + slab parser |
-| [percolator-match](https://github.com/aeyakovenko/percolator-match) | Reference passive matcher |
-| [percolator-meta](https://github.com/aeyakovenko/percolator-meta) | Staking rewards (MetaDAO futarchy) |
-
-Custom matchers by Fabrknt: [percolator-fabrknt](https://github.com/psyto/percolator-fabrknt)
-
-## Development
-
-```bash
-# Build vault program
-cargo-build-sbf --tools-version v1.53 -- --manifest-path programs/syntx-vault/Cargo.toml
-
-# Run tests (requires percolator-prog binary)
-cargo test -p syntx-vault --test integration
-
-# Run keeper
-cd keeper && npm install && cp .env.example .env && npx ts-node src/index.ts
-
-# Run frontend (local dev — serves at localhost:3000/vaults)
-cd app && npm install && npx next dev
-
-# Deploy to devnet
-cd keeper && npx ts-node src/setup-devnet.ts
 ```
+syntx/
+├── programs/syntx-vault/
+│   ├── src/lib.rs              # Vault program (1,199 LOC, 15 instructions)
+│   └── tests/integration.rs    # 20+ LiteSVM tests
+├── keeper/
+│   └── src/
+│       ├── venues/
+│       │   ├── types.ts        # VenueAdapter interface
+│       │   ├── percolator.ts   # PercolatorAdapter
+│       │   ├── phoenix.ts      # PhoenixAdapter (Phoenix V1 SDK)
+│       │   └── router.ts       # VenueRouter (multi-venue scoring)
+│       ├── keeper.ts           # Venue-agnostic keeper loop
+│       ├── strategy.ts         # Funding Rate Harvest strategy
+│       ├── slab.ts             # Percolator slab parser
+│       └── config.ts           # VENUE=percolator|phoenix|router
+├── sdk/
+│   └── src/
+│       ├── client.ts           # SyntxClient class
+│       ├── instructions.ts     # TX builders
+│       ├── accounts.ts         # On-chain parsers + vault discovery
+│       └── constants.ts        # PDA derivation
+├── app/                        # Next.js 16 frontend (5 pages)
+│   └── src/app/
+│       ├── page.tsx            # Landing — composable exchange-agnostic vaults
+│       ├── vaults/page.tsx     # Vault marketplace (named vaults, venue badges)
+│       ├── compose/page.tsx    # Architecture diagram, CPI snippets, recipes
+│       ├── earn/page.tsx       # Portfolio view
+│       └── create/page.tsx     # Vault creation wizard
+└── docs/
+    ├── BUILD-PLAN.md
+    ├── HOW-IT-WORKS.md
+    ├── VAULT-ARCHITECTURE.md
+    ├── SECURITY-ASSESSMENT.md
+    └── BUSINESS-PLAN.md
+```
+
+## Tech Stack
+
+| Component | Tech |
+|---|---|
+| Vault Program | Anchor 0.30.1, Rust, Solana SDK 1.18 |
+| Tests | LiteSVM (in-memory Solana emulator) |
+| Keeper | TypeScript, @solana/web3.js, @ellipsis-labs/phoenix-sdk |
+| Frontend | Next.js 16, React 19, Tailwind CSS 4, Vercel Analytics |
+| SDK | TypeScript, @solana/spl-token |
+
+## Built on
+
+| Dependency | What |
+|---|---|
+| [Percolator](https://github.com/aeyakovenko/percolator) | Formally verified perp risk engine by Anatoly Yakovenko |
+| [Phoenix](https://www.phoenix.trade/) | Composable spot orderbook by Ellipsis Labs |
+| [percolator-fabrknt](https://github.com/psyto/percolator-fabrknt) | 5 custom matching strategies by Fabrknt |
+
+## Track Record
+
+Syntx's strategy logic is battle-tested on production vaults:
+
+| Vault | Protocol | Chain | Status |
+|---|---|---|---|
+| [Yogi](https://github.com/psyto/yogi) | Drift | Solana mainnet | Live, +1.61% through -7.4% BTC week |
+| [Kodiak](https://github.com/psyto/kodiak) | Hyperliquid | Hyperliquid mainnet | Live, delta-neutral |
+
+29 published [@fabrknt/*](https://www.npmjs.com/org/fabrknt) infrastructure packages power the stack.
 
 ## Roadmap
 
 | Phase | Status |
 |---|---|
-| Foundation + Core Vault | Done |
-| Keeper + Devnet | Done |
-| Fees + Multi-vault | Done |
-| SDK + Frontend (6 pages) | Done |
-| Composability (CPI, Jupiter) | Done |
-| Circuit Breakers + Security Hardening | Done |
-| Fabrknt Platform Integration | Done |
-| Security Audit | Pending (~$50-100K, non-negotiable before mainnet) |
-| SNTX Token | Pending (needs legal counsel) |
-| Mainnet Launch | Pending (after audit) |
-
-See [BUILD-PLAN.md](docs/BUILD-PLAN.md) for details, [HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) for the complete guide, and [PERCOLATOR-SPEC-REFERENCE.md](docs/PERCOLATOR-SPEC-REFERENCE.md) for Percolator's risk engine mechanics.
+| Vault program + tests | Done |
+| Keeper + devnet deployment | Done |
+| Venue adapter pattern | Done |
+| Phoenix V1 integration | Done |
+| VenueRouter (multi-venue) | Done |
+| Frontend (5 pages) | Done |
+| CPI composability | Done |
+| Circuit breakers | Done |
+| Security audit | Pending (~$50-100K) |
+| Mainnet launch | After audit |
 
 ## License
 
 Apache 2.0
+
+---
+
+Built by [@psyto](https://x.com/psyto) / [Fabrknt](https://fabrknt.com)
