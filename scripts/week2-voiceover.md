@@ -26,7 +26,7 @@
 
 ## [Slide 7 — Stats, 0:40–0:46]
 
-"Three architectures. Four venue adapters. Twenty-seven tests. Forty-eight hour timelock. Seventeen Anchor instructions. Five frontend pages."
+"Three architectures. Four venue adapters. Twenty-nine tests. Forty-eight hour timelock. Fifteen Anchor instructions. Five frontend pages."
 
 ## [Slide 8 — Also this week, 0:46–0:53]
 

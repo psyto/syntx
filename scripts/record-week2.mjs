@@ -113,7 +113,7 @@ const slides = [
       "3 venue adapters — 3 architectures (slab, CLOB, oracle-AMM)",
       "VenueRouter — multi-venue smart routing",
       "48h timelock + immutable circuit breaker floor",
-      "27 tests, 17 instructions, full SDK",
+      "29 tests, 15 instructions, full SDK",
     ]
   ),
 
@@ -161,9 +161,9 @@ const slides = [
   statSlide("Week 2 Progress", [
     { value: "3", label: "Architectures" },
     { value: "4", label: "Venue Adapters" },
-    { value: "27", label: "Tests Passing" },
+    { value: "29", label: "Tests Passing" },
     { value: "48h", label: "Manager Timelock" },
-    { value: "17", label: "Anchor Instructions" },
+    { value: "15", label: "Anchor Instructions" },
     { value: "5", label: "Frontend Pages" },
   ]),
 
