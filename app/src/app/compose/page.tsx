@@ -210,32 +210,163 @@ export default function ComposePage() {
         })}
       </div>
 
-      {/* Architecture callout */}
+      {/* Multi-Venue Architecture */}
       <div className="mt-10 panel p-6">
-        <h3 className="text-xs font-mono uppercase tracking-wider text-[var(--text-dim)] mb-4">
-          How composability works
+        <h3 className="text-xs font-mono uppercase tracking-wider text-[var(--text-dim)] mb-2">
+          Exchange-Agnostic Architecture
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
-          <div>
-            <div className="font-medium mb-2">CPI (Cross-Program Invocation)</div>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-              Any Solana program can call Syntx in the same transaction. Atomic execution — if any step fails, everything reverts.
-            </p>
-          </div>
-          <div>
-            <div className="font-medium mb-2">get_share_price</div>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-              On-chain oracle returns vault share price. Lending protocols can value Syntx shares as collateral without external oracles.
-            </p>
-          </div>
-          <div>
-            <div className="font-medium mb-2">cpi_trade</div>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-              Public trading interface — any program can open/close positions through the vault. Size-limited for safety.
-            </p>
+        <p className="text-xs text-[var(--text-muted)] mb-6">
+          Vaults route trades through a VenueAdapter interface. Adding a new DEX means implementing 6 methods — the strategy code never changes.
+        </p>
+
+        {/* Architecture Diagram */}
+        <div className="bg-[var(--bg)] rounded-xl border border-[var(--border)] p-6 mb-6">
+          <div className="flex flex-col md:flex-row items-center justify-center gap-3 md:gap-5 text-xs font-mono">
+            {/* Left: Users */}
+            <div className="flex flex-col gap-2 items-center">
+              <ArchBox label="Depositors" sub="USDC" />
+              <ArchBox label="DeFi Protocols" sub="CPI" accent />
+            </div>
+
+            <div className="text-[var(--text-dim)] text-lg md:rotate-0 rotate-90">→</div>
+
+            {/* Center: Syntx */}
+            <div className="flex flex-col items-center gap-2">
+              <div className="px-6 py-4 bg-[var(--primary)]/10 border border-[var(--primary)]/30 rounded-lg text-center">
+                <div className="text-[9px] uppercase tracking-wider text-[var(--primary)] mb-1">Syntx Vault (PDA)</div>
+                <div className="text-sm font-semibold">VenueRouter</div>
+                <div className="text-[9px] text-[var(--text-dim)] mt-1">Scores → Routes → Executes</div>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-[8px] px-2 py-0.5 rounded bg-green-950 text-[var(--green)]">SPL Shares</span>
+                <span className="text-[8px] px-2 py-0.5 rounded bg-blue-950 text-blue-400">Circuit Breaker</span>
+              </div>
+            </div>
+
+            <div className="text-[var(--text-dim)] text-lg md:rotate-0 rotate-90">→</div>
+
+            {/* Right: Venues */}
+            <div className="flex flex-col gap-2">
+              <VenueBox name="Percolator" type="perp" sub="Formally verified" />
+              <VenueBox name="Phoenix" type="spot" sub="CLOB orderbook" />
+              <VenueBox name="Jupiter Perps" type="perp" sub="Oracle-based" />
+              <div className="px-4 py-2 border border-dashed border-[var(--border)] rounded-lg text-center text-[var(--text-dim)]">
+                + Your DEX here
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* CPI Interface */}
+      <div className="mt-6 panel p-6">
+        <h3 className="text-xs font-mono uppercase tracking-wider text-[var(--text-dim)] mb-2">
+          CPI Interface
+        </h3>
+        <p className="text-xs text-[var(--text-muted)] mb-6">
+          Any Solana program can trade through Syntx vaults. Atomic execution — if any step fails, everything reverts.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-[1px] bg-[var(--border)] rounded-xl overflow-hidden">
+          <div className="bg-[var(--bg-panel)] p-5">
+            <div className="text-[var(--primary)] font-mono text-sm mb-2">cpi_trade</div>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed mb-3">
+              Public trading interface — any whitelisted program can open/close positions through the vault.
+            </p>
+            <CodeBlock code={`// Another program calls Syntx
+invoke_signed(
+  &cpi_trade_ix,
+  &[vault, slab, percolator],
+  &[&seeds],
+)?;`} />
+          </div>
+          <div className="bg-[var(--bg-panel)] p-5">
+            <div className="text-[var(--primary)] font-mono text-sm mb-2">get_share_price</div>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed mb-3">
+              On-chain oracle. Lending protocols value Syntx shares as collateral without external oracles.
+            </p>
+            <CodeBlock code={`// Read share price on-chain
+let vault = VaultState::load(
+  &vault_account
+)?;
+let price = vault.equity()
+  / vault.total_shares;`} />
+          </div>
+          <div className="bg-[var(--bg-panel)] p-5">
+            <div className="text-[var(--primary)] font-mono text-sm mb-2">deposit / withdraw</div>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed mb-3">
+              Standard vault operations. Deposit collateral, receive SPL share tokens. Withdraw burns shares.
+            </p>
+            <CodeBlock code={`// Deposit via SDK
+const ix = syntx.deposit({
+  amount: 1_000_000n,
+  vault: vaultPda,
+  userCollateral: ata,
+});`} />
+          </div>
+        </div>
+      </div>
+
+      {/* Venue Adapter */}
+      <div className="mt-6 panel p-6">
+        <h3 className="text-xs font-mono uppercase tracking-wider text-[var(--text-dim)] mb-2">
+          Add a new venue
+        </h3>
+        <p className="text-xs text-[var(--text-muted)] mb-4">
+          Implement the VenueAdapter interface — 6 methods. The keeper and strategy code stays unchanged.
+        </p>
+        <CodeBlock code={`interface VenueAdapter {
+  readonly name: string;
+  readonly type: "perp" | "spot" | "hybrid";
+
+  initialize(): Promise<void>;
+  getPrice(market: string): Promise<number>;
+  getPosition(): Promise<Position | null>;
+  getVenueState(): Promise<VenueState>;
+  trade(size: bigint): Promise<OrderResult>;
+  crank(): Promise<void>;
+}
+
+// Example: add Drift as a venue
+class DriftAdapter implements VenueAdapter {
+  readonly name = "Drift";
+  readonly type = "perp";
+  // ... implement 6 methods
+}`} />
+      </div>
     </div>
+  );
+}
+
+function ArchBox({ label, sub, accent }: { label: string; sub: string; accent?: boolean }) {
+  return (
+    <div className={`px-4 py-3 rounded-lg text-center border ${accent ? "border-[var(--primary)]/30 bg-[var(--primary)]/5" : "border-[var(--border)] bg-[var(--bg-card)]"}`}>
+      <div className="text-xs font-medium">{label}</div>
+      <div className="text-[9px] text-[var(--text-dim)]">{sub}</div>
+    </div>
+  );
+}
+
+function VenueBox({ name, type, sub }: { name: string; type: "perp" | "spot"; sub: string }) {
+  return (
+    <div className="px-4 py-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg flex items-center gap-2">
+      <span className={`text-[8px] font-mono uppercase px-1.5 py-0.5 rounded ${
+        type === "perp" ? "bg-blue-950 text-blue-400" : "bg-green-950 text-[var(--green)]"
+      }`}>
+        {type}
+      </span>
+      <div>
+        <div className="text-xs font-medium">{name}</div>
+        <div className="text-[9px] text-[var(--text-dim)]">{sub}</div>
+      </div>
+    </div>
+  );
+}
+
+function CodeBlock({ code }: { code: string }) {
+  return (
+    <pre className="bg-[var(--bg)] border border-[var(--border)] rounded-lg p-3 text-[11px] font-mono text-[var(--text-muted)] leading-relaxed overflow-x-auto">
+      {code}
+    </pre>
   );
 }
