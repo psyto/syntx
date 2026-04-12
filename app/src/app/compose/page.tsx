@@ -119,9 +119,9 @@ export default function ComposePage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold mb-2">Compose</h1>
         <p className="text-[var(--text-muted)] max-w-2xl">
-          Build multi-protocol DeFi strategies in one flow. Syntx compose with
-          Jupiter, Kamino, Marginfi, Phoenix, and any Solana program via CPI.
-          This is what purpose-built chains like Hyperliquid can never offer.
+          Build multi-protocol DeFi strategies in one flow. Syntx vaults route across
+          Percolator, Phoenix, and Jupiter Perps — then compose with Kamino, Marginfi,
+          and any Solana program via CPI. Exchange-agnostic composability.
         </p>
       </div>
 

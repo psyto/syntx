@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Syntx — Composable Perp Vaults on Solana",
-  description: "Launch and manage composable perp strategy vaults on Solana. Built by Fabrknt, powered by Percolator.",
+  title: "Syntx — Composable Exchange-Agnostic Vaults on Solana",
+  description: "Strategy vaults that route across any perp venue — Percolator, Phoenix, Jupiter Perps. One vault, best execution, full CPI composability.",
 };
 
 export default function RootLayout({

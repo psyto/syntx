@@ -23,7 +23,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="mt-4 pt-4 border-t border-[var(--border)] flex items-center justify-between text-[10px] text-[var(--text-dim)]">
-          <span>Syntx — Composable Perp Vaults on Solana</span>
+          <span>Syntx — Composable Exchange-Agnostic Vaults on Solana</span>
           <span>Powered by Percolator — <a href="https://fabrknt.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition">fabrknt.com</a></span>
         </div>
       </div>

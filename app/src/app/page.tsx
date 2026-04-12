@@ -18,13 +18,15 @@ export default function Home() {
       <section className="grid-bg border-b">
         <div className="max-w-[1100px] mx-auto px-6 py-24 md:py-32 flex flex-col items-center text-center">
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-tight mb-6">
-            Composable Perp Vaults
+            Composable
+            <br />
+            Exchange-Agnostic Vaults
             <br />
             <span className="text-[var(--text-muted)]">on Solana</span>
           </h1>
           <p className="text-[var(--text-muted)] text-lg md:text-xl max-w-2xl mb-10">
-            Launch strategy vaults that trade perpetual futures on Percolator.
-            Compose with Jupiter, Kamino, Marginfi — the entire Solana DeFi stack.
+            Strategy vaults that route across any perp venue — Percolator, Phoenix, Jupiter Perps.
+            One vault, best execution, full CPI composability.
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Link
@@ -47,8 +49,8 @@ export default function Home() {
       <section className="border-b">
         <div className="max-w-[1100px] mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px] bg-[var(--border)]">
-            <StatCard label="Protocol" value="Percolator" sub="Formally Verified" />
-            <StatCard label="Risk Engine" value="H Ratio" sub="No insolvency possible" />
+            <StatCard label="Venues" value="Multi-DEX" sub="Percolator · Phoenix · Jupiter" />
+            <StatCard label="Risk Engine" value="H Ratio" sub="Formally verified by Kani" />
             <StatCard label="Composability" value="Full CPI" sub="Any Solana program" />
             <StatCard label="Vaults" value="Permissionless" sub="Anyone can create" />
           </div>
@@ -58,28 +60,59 @@ export default function Home() {
       {/* How It Works */}
       <section className="py-20">
         <div className="max-w-[1100px] mx-auto px-6">
-          <h2 className="text-2xl font-bold mb-3 text-center">Not just a perp DEX</h2>
+          <h2 className="text-2xl font-bold mb-3 text-center">The vault layer Solana needs</h2>
           <p className="text-[var(--text-muted)] text-center mb-12 max-w-xl mx-auto">
-            Syntx creates composable strategy vaults that interact with the entire Solana ecosystem —
-            not isolated perp markets.
+            Every perp venue builds in isolation. Syntx sits on top — composable vaults that
+            route to the best execution across any DEX.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-[1px] bg-[var(--border)] rounded-xl overflow-hidden">
             <FeatureCard
-              title="Vault-Native"
-              description="Deposit into managed strategy vaults. Keepers trade on your behalf — funding rate harvesting, delta-neutral, market making."
+              title="Exchange-Agnostic"
+              description="Vaults route trades across Percolator, Phoenix, and Jupiter Perps. Same strategy, best execution. Add new venues with one adapter."
               icon="1"
             />
             <FeatureCard
               title="Composable"
-              description="Your vault composes with Jupiter, Kamino, Marginfi via CPI. Atomic hedging, leveraged yield, protocol treasury management."
+              description="CPI-native vaults compose with Jupiter, Kamino, Marginfi. Atomic hedging, leveraged yield, protocol treasury management — one transaction."
               icon="2"
             />
             <FeatureCard
-              title="Formally Verified"
-              description="Built on Percolator's H ratio — mathematically proven that no user can withdraw more than exists. Kani theorem prover."
+              title="Vault-Native"
+              description="On-chain PDA vaults with no private keys. SPL share tokens usable as collateral across DeFi. Performance fees enforced on-chain."
               icon="3"
             />
+          </div>
+        </div>
+      </section>
+
+      {/* Venue Architecture */}
+      <section className="border-t py-20">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <h2 className="text-2xl font-bold mb-3 text-center">Route to best execution</h2>
+          <p className="text-[var(--text-muted)] text-center mb-12 max-w-xl mx-auto">
+            The VenueRouter scores each DEX by funding rate, liquidity, and cost —
+            then routes your vault&apos;s trades to the best venue.
+          </p>
+
+          <div className="panel p-8">
+            <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-6 text-sm font-mono">
+              <div className="px-4 py-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg text-center">
+                <div className="text-[9px] uppercase tracking-wider text-[var(--text-dim)] mb-1">Depositors</div>
+                <div className="text-[var(--primary)]">USDC → Vault</div>
+              </div>
+              <Arrow />
+              <div className="px-6 py-4 bg-[var(--primary)]/10 border border-[var(--primary)]/30 rounded-lg text-center">
+                <div className="text-[9px] uppercase tracking-wider text-[var(--primary)] mb-1">Syntx Vault</div>
+                <div>VenueRouter</div>
+              </div>
+              <Arrow />
+              <div className="flex flex-col gap-2">
+                <VenueTag name="Percolator" type="perp" />
+                <VenueTag name="Phoenix" type="spot" />
+                <VenueTag name="Jupiter Perps" type="perp" />
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -90,7 +123,7 @@ export default function Home() {
           <h2 className="text-2xl font-bold mb-3 text-center">Compose with everything</h2>
           <p className="text-[var(--text-muted)] text-center mb-12 max-w-xl mx-auto">
             Purpose-built chains like Hyperliquid can never offer this.
-            Syntx live on Solana — the composability layer.
+            Syntx lives on Solana — the composability layer.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-[1px] bg-[var(--border)] rounded-xl overflow-hidden">
@@ -105,9 +138,9 @@ export default function Home() {
               description="Borrow against your vault shares. Leverage your yield. Composable lending."
             />
             <ComposeCard
-              protocol="Kamino"
-              action="Atomic hedging"
-              description="Lending protocols CPI into Syntx to auto-hedge exposure. One transaction, zero basis risk."
+              protocol="Phoenix"
+              action="Spot + perp arbitrage"
+              description="Buy spot on Phoenix, short perp on Syntx in one atomic transaction. Capture basis spread."
             />
             <ComposeCard
               protocol="Protocol Treasuries"
@@ -121,10 +154,10 @@ export default function Home() {
       {/* CTA */}
       <section className="border-t grid-bg">
         <div className="max-w-[1100px] mx-auto px-6 py-20 text-center">
-          <h2 className="text-3xl font-bold mb-4">The composable perp layer Solana needs</h2>
+          <h2 className="text-3xl font-bold mb-4">Composable exchange-agnostic vaults</h2>
           <p className="text-[var(--text-muted)] mb-8 max-w-lg mx-auto">
-            Solana needs a composable perp layer. Syntx is building it on Percolator.
-            Live on devnet.
+            One vault layer across every Solana perp venue.
+            CPI-native. Formally verified. Live on devnet.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
@@ -137,6 +170,25 @@ export default function Home() {
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function Arrow() {
+  return (
+    <div className="text-[var(--text-dim)] text-lg md:rotate-0 rotate-90">→</div>
+  );
+}
+
+function VenueTag({ name, type }: { name: string; type: "perp" | "spot" }) {
+  return (
+    <div className="px-4 py-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg flex items-center gap-2">
+      <span className={`text-[8px] font-mono uppercase px-1.5 py-0.5 rounded ${
+        type === "perp" ? "bg-blue-950 text-blue-400" : "bg-green-950 text-[var(--green)]"
+      }`}>
+        {type}
+      </span>
+      <span className="text-sm">{name}</span>
     </div>
   );
 }
