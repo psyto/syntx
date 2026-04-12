@@ -24,7 +24,7 @@ function optionalPubkey(key: string): PublicKey | undefined {
   return val ? new PublicKey(val) : undefined;
 }
 
-export type VenueType = "percolator" | "phoenix" | "router";
+export type VenueType = "percolator" | "phoenix" | "jupiter" | "router";
 
 export interface Config {
   rpcUrl: string;
@@ -44,6 +44,9 @@ export interface Config {
   // Phoenix-specific (required when venue=phoenix)
   phoenixProgramId?: PublicKey;
   phoenixMarket?: PublicKey;
+
+  // Jupiter Perps-specific (required when venue=jupiter)
+  jupiterMarket?: string; // "SOL", "BTC", or "ETH"
 }
 
 export function loadConfig(): Config {
@@ -66,6 +69,10 @@ export function loadConfig(): Config {
 
   if (venue === "phoenix" || venue === "router") {
     config.phoenixMarket = optionalPubkey("PHOENIX_MARKET");
+  }
+
+  if (venue === "jupiter" || venue === "router") {
+    config.jupiterMarket = optionalEnv("JUPITER_MARKET") ?? "SOL";
   }
 
   return config;

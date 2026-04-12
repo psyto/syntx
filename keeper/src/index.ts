@@ -2,7 +2,7 @@ import { Connection, Keypair } from "@solana/web3.js";
 import { readFileSync } from "fs";
 import { loadConfig } from "./config";
 import { runKeeper } from "./keeper";
-import { VenueAdapter, PercolatorAdapter, PhoenixAdapter, VenueRouter } from "./venues";
+import { VenueAdapter, PercolatorAdapter, PhoenixAdapter, JupiterPerpsAdapter, VenueRouter } from "./venues";
 
 function loadKeypair(path: string): Keypair {
   const resolved = path.replace("~", process.env.HOME ?? "");
@@ -40,6 +40,14 @@ function createVenue(config: ReturnType<typeof loadConfig>): VenueAdapter {
         marketAddress: config.phoenixMarket,
       });
 
+    case "jupiter":
+      return new JupiterPerpsAdapter({
+        connection,
+        manager,
+        vaultPda: config.vaultPda,
+        market: config.jupiterMarket ?? "SOL",
+      });
+
     case "router": {
       const venues: VenueAdapter[] = [];
 
@@ -60,6 +68,15 @@ function createVenue(config: ReturnType<typeof loadConfig>): VenueAdapter {
           manager,
           vaultPda: config.vaultPda,
           marketAddress: config.phoenixMarket,
+        }));
+      }
+
+      if (config.jupiterMarket) {
+        venues.push(new JupiterPerpsAdapter({
+          connection,
+          manager,
+          vaultPda: config.vaultPda,
+          market: config.jupiterMarket,
         }));
       }
 
