@@ -63,7 +63,7 @@ export default function Nav() {
                   key={link.href}
                   href={link.href}
                   className={`px-3 py-2.5 text-sm transition-colors ${
-                    pathname === link.href
+                    pathname === link.href || (link.href === "/vaults" && pathname === "/")
                       ? "text-[var(--text)] border-b-2 border-[var(--primary)]"
                       : "text-[var(--text-muted)] hover:text-[var(--text)]"
                   }`}
@@ -86,7 +86,7 @@ export default function Nav() {
             key={link.href}
             href={link.href}
             className={`flex-1 text-center py-2.5 text-xs transition-colors ${
-              pathname === link.href
+              pathname === link.href || (link.href === "/vaults" && pathname === "/")
                 ? "text-[var(--text)] border-b-2 border-[var(--primary)]"
                 : "text-[var(--text-muted)]"
             }`}
