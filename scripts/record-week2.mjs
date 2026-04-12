@@ -21,6 +21,7 @@ function readSrc(rel) {
 }
 
 const phoenixAdapter = readSrc("keeper/src/venues/phoenix.ts");
+const jupiterAdapter = readSrc("keeper/src/venues/jupiter.ts");
 const routerTs = readSrc("keeper/src/venues/router.ts");
 const clientTs = readSrc("sdk/src/client.ts");
 const libRs = readSrc("programs/syntx-vault/src/lib.rs");
@@ -109,39 +110,46 @@ const slides = [
     "Week 2 Update",
     "Composable Exchange-Agnostic Vaults on Solana",
     [
-      "Phoenix V1 integrated as second venue",
+      "3 venue adapters — 3 architectures (slab, CLOB, oracle-AMM)",
       "VenueRouter — multi-venue smart routing",
-      "48h timelock on manager transfer",
-      "Immutable circuit breaker floor",
-      "27 tests passing, 17 instructions",
+      "48h timelock + immutable circuit breaker floor",
+      "27 tests, 17 instructions, full SDK",
     ]
   ),
 
   // Slide 1: Phoenix adapter
   codeSlide(
     "venues/phoenix.ts",
-    "Phoenix V1 spot orderbook — second execution venue",
+    "Phoenix V1 — CLOB orderbook architecture",
     phoenixAdapter.split("\n").slice(0, 55).join("\n"),
     [23, 24, 25, 42, 43, 44, 45, 46, 47]
   ),
 
-  // Slide 2: VenueRouter
+  // Slide 2: Jupiter Perps adapter
+  codeSlide(
+    "venues/jupiter.ts",
+    "Jupiter Perps — oracle-based AMM architecture (3rd venue, 3rd architecture)",
+    jupiterAdapter.split("\n").slice(0, 55).join("\n"),
+    [22, 23, 24, 25, 69, 70, 71]
+  ),
+
+  // Slide 3: VenueRouter
   codeSlide(
     "venues/router.ts",
-    "VenueRouter scores each DEX and routes to best execution",
+    "VenueRouter scores all 3 venues and routes to best execution",
     routerTs.split("\n").slice(0, 55).join("\n"),
     [15, 16, 17, 18, 19, 22, 23, 30]
   ),
 
-  // Slide 3: 48h Timelock
+  // Slide 4: 48h Timelock
   codeSlide(
     "lib.rs — Manager Transfer Timelock",
-    "48h delay prevents instant hostile takeover if manager key is compromised",
+    "Studied Drift exploit → proactively added 48h delay on manager transfer",
     timelockCode,
     [1, 2, 3, 14, 15, 20]
   ),
 
-  // Slide 4: Immutable circuit breaker floor
+  // Slide 5: Immutable circuit breaker floor
   codeSlide(
     "lib.rs — Immutable Circuit Breaker Floor",
     "min_drawdown_bps set at creation — manager can never reduce below this",
@@ -149,30 +157,29 @@ const slides = [
     [1, 2, 3, 15, 16, 17, 18]
   ),
 
-  // Slide 5: Stats
+  // Slide 6: Stats
   statSlide("Week 2 Progress", [
-    { value: "17", label: "Anchor Instructions" },
+    { value: "3", label: "Architectures" },
+    { value: "4", label: "Venue Adapters" },
     { value: "27", label: "Tests Passing" },
-    { value: "3", label: "Venue Adapters" },
     { value: "48h", label: "Manager Timelock" },
-    { value: "2", label: "Live Devnet Vaults" },
+    { value: "17", label: "Anchor Instructions" },
     { value: "5", label: "Frontend Pages" },
   ]),
 
-  // Slide 6: Frontend + SDK
+  // Slide 7: Also this week
   titleSlide(
     "Also This Week",
-    "Frontend, SDK, Documentation",
+    "Frontend, SDK, Security, Documentation",
     [
-      "Landing reframed: Composable Exchange-Agnostic Vaults",
+      "Landing + compose reframed: 3 architectures, venue diagram",
       "Vault UX: named vaults, Max button, toasts, dollar withdraw",
       "SDK complete: buildDepositTx, buildWithdrawTx",
-      "CPI examples + venue adapter skeleton",
-      "README, business plan, CONTRIBUTING.md",
+      "CPI examples, venue adapter skeleton, business plan",
     ]
   ),
 
-  // Slide 7: Closing
+  // Slide 8: Closing
   titleSlide(
     "Next Week",
     "Final polish + submission materials",
@@ -375,14 +382,15 @@ ${slides.map((s, i) => {
 // ---------------------------------------------------------------------------
 
 const timeline = [
-  [0, 8000],   // Title: 8s
-  [1, 8000],   // Phoenix adapter: 8s
-  [2, 8000],   // VenueRouter: 8s
-  [3, 8000],   // Timelock: 8s
-  [4, 7000],   // Immutable floor: 7s
-  [5, 7000],   // Stats: 7s
-  [6, 7000],   // Frontend + SDK: 7s
-  [7, 7000],   // Closing: 7s
+  [0, 7000],   // Title: 7s
+  [1, 7000],   // Phoenix adapter: 7s
+  [2, 7000],   // Jupiter adapter: 7s
+  [3, 7000],   // VenueRouter: 7s
+  [4, 7000],   // Timelock: 7s
+  [5, 6000],   // Immutable floor: 6s
+  [6, 6000],   // Stats: 6s
+  [7, 7000],   // Also this week: 7s
+  [8, 6000],   // Closing: 6s
 ];
 
 async function record() {
@@ -416,7 +424,7 @@ async function record() {
       frameNum++;
 
       // Scroll code slides
-      if ([1, 2, 3, 4].includes(slideIdx)) {
+      if ([1, 2, 3, 4, 5].includes(slideIdx)) {
         const scrollProgress = f / frames;
         const maxScroll = 300;
         const scrollTop = Math.floor(scrollProgress * maxScroll);

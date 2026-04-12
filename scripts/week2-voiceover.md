@@ -1,33 +1,37 @@
 # Week 2 Voiceover Script (60 seconds)
 
-## [Slide 1 — Title, 0:00–0:08]
+## [Slide 1 — Title, 0:00–0:07]
 
-"Hi, I'm Hiro. Week 2 of Syntx at Solana Frontier. We integrated Phoenix as a second venue, built multi-venue routing, and hardened security with a 48-hour timelock and immutable circuit breaker floor."
+"Hi, I'm Hiro. Week 2 of Syntx at Solana Frontier. This week we proved the exchange-agnostic thesis — three venue adapters across three fundamentally different architectures."
 
-## [Slide 2 — Phoenix adapter, 0:08–0:16]
+## [Slide 2 — Phoenix adapter, 0:07–0:14]
 
-"Phoenix V1 is now live as a second execution venue. The PhoenixAdapter implements the same VenueAdapter interface — reads the orderbook, executes swaps, tracks positions. All through the Ellipsis Labs SDK."
+"Phoenix V1 is our second venue — a CLOB orderbook. The PhoenixAdapter reads the orderbook, executes swaps, tracks positions. All behind the same VenueAdapter interface."
 
-## [Slide 3 — VenueRouter, 0:16–0:24]
+## [Slide 3 — Jupiter adapter, 0:14–0:21]
 
-"The VenueRouter manages multiple venues and implements VenueAdapter itself. The keeper treats it as a single venue — routing is transparent. Score all venues, route to the best one."
+"Jupiter Perps is our third venue — an oracle-based AMM. Completely different architecture from Percolator's slab or Phoenix's CLOB. Same six methods. Same keeper. That's the point."
 
-## [Slide 4 — Timelock, 0:24–0:32]
+## [Slide 4 — VenueRouter, 0:21–0:28]
 
-"After studying the Drift exploit report, we identified the same single-manager-key risk in our own design. So we implemented a 48-hour timelock. Manager transfers now require propose, wait, then execute. If a key is compromised, depositors have time to withdraw."
+"The VenueRouter scores all three venues by funding rate, liquidity, and insurance — then routes to the best one. The keeper doesn't know or care which DEX it's trading on."
 
-## [Slide 5 — Immutable floor, 0:32–0:39]
+## [Slide 5 — Timelock, 0:28–0:34]
 
-"We also added an immutable circuit breaker floor. The minimum drawdown limit is set at vault creation and can never be reduced — not even by the manager. Protection that cannot be disabled."
+"After studying the Drift exploit report, we identified the same single-manager-key risk. So we added a 48-hour timelock on manager transfers. Propose, wait, then execute."
 
-## [Slide 6 — Stats, 0:39–0:46]
+## [Slide 6 — Immutable floor, 0:34–0:40]
 
-"The numbers: seventeen Anchor instructions, twenty-seven passing tests, three venue adapters, forty-eight hour timelock, two live vaults on devnet, five frontend pages."
+"We also added an immutable circuit breaker floor. Set at vault creation, can never be reduced. Protection that the manager cannot disable."
 
-## [Slide 7 — Also this week, 0:46–0:53]
+## [Slide 7 — Stats, 0:40–0:46]
 
-"Also shipped: frontend reframed as composable exchange-agnostic vaults, SDK complete with buildDepositTx and buildWithdrawTx, CPI examples, venue adapter skeleton, business plan, and CONTRIBUTING guide."
+"Three architectures. Four venue adapters. Twenty-seven tests. Forty-eight hour timelock. Seventeen Anchor instructions. Five frontend pages."
 
-## [Slide 8 — Closing, 0:53–1:00]
+## [Slide 8 — Also this week, 0:46–0:53]
+
+"Also shipped: frontend reframed with three-architecture venue diagram, complete SDK, CPI examples, venue adapter skeleton, business plan, and CONTRIBUTING guide."
+
+## [Slide 9 — Closing, 0:53–0:60]
 
 "Next week: demo video, pitch video, final polish, and submit on Colosseum. Thanks for watching."
