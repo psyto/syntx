@@ -99,6 +99,24 @@ Read equity from Percolator slab instead of accepting off-chain input.
 
 Emit events for admin actions so off-chain monitoring can detect anomalies.
 
+## The Double-Risk Question
+
+A fair critique of Syntx: users bear **Syntx smart contract risk on top of DEX risk** — two risk layers instead of one. Why would a user accept this?
+
+**The counter-argument: concentration risk vs. diversified risk.**
+
+| Single-venue vault | Syntx multi-venue vault |
+|---|---|
+| 1 smart contract risk layer | 2 risk layers (Syntx + DEX) |
+| 100% concentration on one DEX | Diversified across venues |
+| DEX downtime = total strategy loss | DEX downtime = route to another venue |
+| DEX exploit = 100% exposure | Exposure limited to capital on that venue |
+| No choice when liquidity dries up | Router picks best liquidity |
+
+When Drift was exploited in April 2026, single-venue Drift vaults lost access to their entire strategy overnight. A Syntx vault would have routed to Percolator or Jupiter Perps in the next tick.
+
+**The net risk calculation:** Syntx adds one smart contract layer (~audit-mitigable) but removes 100% venue concentration risk (~unmitigable). For any vault managing meaningful capital, diversified venue risk is strictly better than concentrated venue risk — as long as the Syntx contract itself is sound. This is why the audit is non-negotiable.
+
 ## Summary
 
 Syntx is NOT vulnerable to the specific Drift exploit (multisig + durable nonce). The two most critical governance risks identified — instant manager transfer and disableable circuit breakers — are now mitigated:
@@ -108,4 +126,4 @@ Syntx is NOT vulnerable to the specific Drift exploit (multisig + durable nonce)
 
 Remaining gaps (multisig, on-chain equity for fees, monitoring) are planned for post-audit implementation. The vault PDA pattern provides strong protection against direct fund theft, and the timelock + immutable floor significantly reduce the damage a compromised manager key can cause.
 
-**The audit must specifically review:** timelock implementation, min_drawdown_bps enforcement, CPI boundary with Percolator, and share price manipulation vectors.
+**The audit must specifically review:** timelock implementation, min_drawdown_bps enforcement, CPI boundary with Percolator, share price rounding vectors, and CPI reentrancy at the Percolator boundary.
