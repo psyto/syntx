@@ -248,6 +248,7 @@ async function main() {
     bufU16(2000), // performance_fee_bps (20%)
     bufU16(200),  // management_fee_bps (2%)
     bufU64(10_000_000_000n), // deposit_cap
+    bufU16(500),  // min_drawdown_bps (5% immutable floor)
   ]);
 
   const initVaultIx = new TransactionInstruction({

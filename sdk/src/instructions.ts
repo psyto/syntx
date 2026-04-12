@@ -26,6 +26,7 @@ import { disc, SYNTX_PROGRAM_ID } from "./constants";
  * @param params.performanceFeeBps - Performance fee in basis points (e.g., 2000 = 20%)
  * @param params.managementFeeBps - Annual management fee in basis points (e.g., 200 = 2%)
  * @param params.depositCap - Maximum total deposits (0 = unlimited)
+ * @param params.minDrawdownBps - Immutable circuit breaker floor (e.g., 500 = 5%). Cannot be reduced after creation.
  */
 export function createInitVaultIx(params: {
   manager: PublicKey;
@@ -37,15 +38,17 @@ export function createInitVaultIx(params: {
   performanceFeeBps: number;
   managementFeeBps: number;
   depositCap: bigint;
+  minDrawdownBps: number;
   programId?: PublicKey;
 }): TransactionInstruction {
   const pid = params.programId ?? SYNTX_PROGRAM_ID;
 
-  const data = Buffer.alloc(8 + 2 + 2 + 8);
+  const data = Buffer.alloc(8 + 2 + 2 + 8 + 2);
   disc("init_vault").copy(data, 0);
   data.writeUInt16LE(params.performanceFeeBps, 8);
   data.writeUInt16LE(params.managementFeeBps, 10);
   data.writeBigUInt64LE(params.depositCap, 12);
+  data.writeUInt16LE(params.minDrawdownBps, 20);
 
   return new TransactionInstruction({
     programId: pid,
@@ -208,5 +211,83 @@ export function createCollectFeesIx(params: {
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
     data,
+  });
+}
+
+/**
+ * Propose a manager transfer. Starts a 48-hour timelock.
+ * After the timelock, call executeManagerTransfer to complete.
+ *
+ * @param params.manager - Current vault manager (signer)
+ * @param params.vaultPda - Vault PDA address
+ * @param params.newManager - Proposed new manager public key
+ */
+export function createProposeManagerIx(params: {
+  manager: PublicKey;
+  vaultPda: PublicKey;
+  newManager: PublicKey;
+  programId?: PublicKey;
+}): TransactionInstruction {
+  const pid = params.programId ?? SYNTX_PROGRAM_ID;
+
+  const data = Buffer.concat([
+    disc("propose_manager"),
+    params.newManager.toBuffer(),
+  ]);
+
+  return new TransactionInstruction({
+    programId: pid,
+    keys: [
+      { pubkey: params.manager, isSigner: true, isWritable: false },
+      { pubkey: params.vaultPda, isSigner: false, isWritable: true },
+    ],
+    data,
+  });
+}
+
+/**
+ * Execute a previously proposed manager transfer after the 48h timelock.
+ * Callable by either the current or pending manager.
+ *
+ * @param params.caller - Current or pending manager (signer)
+ * @param params.vaultPda - Vault PDA address
+ */
+export function createExecuteManagerTransferIx(params: {
+  caller: PublicKey;
+  vaultPda: PublicKey;
+  programId?: PublicKey;
+}): TransactionInstruction {
+  const pid = params.programId ?? SYNTX_PROGRAM_ID;
+
+  return new TransactionInstruction({
+    programId: pid,
+    keys: [
+      { pubkey: params.caller, isSigner: true, isWritable: false },
+      { pubkey: params.vaultPda, isSigner: false, isWritable: true },
+    ],
+    data: disc("execute_manager_transfer"),
+  });
+}
+
+/**
+ * Cancel a pending manager transfer. Only callable by the current manager.
+ *
+ * @param params.manager - Current vault manager (signer)
+ * @param params.vaultPda - Vault PDA address
+ */
+export function createCancelManagerTransferIx(params: {
+  manager: PublicKey;
+  vaultPda: PublicKey;
+  programId?: PublicKey;
+}): TransactionInstruction {
+  const pid = params.programId ?? SYNTX_PROGRAM_ID;
+
+  return new TransactionInstruction({
+    programId: pid,
+    keys: [
+      { pubkey: params.manager, isSigner: true, isWritable: false },
+      { pubkey: params.vaultPda, isSigner: false, isWritable: true },
+    ],
+    data: disc("cancel_manager_transfer"),
   });
 }

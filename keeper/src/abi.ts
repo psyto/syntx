@@ -104,6 +104,39 @@ export function encodeDeposit(amount: bigint): Buffer {
   ]);
 }
 
+/**
+ * Encode propose_manager instruction data.
+ * Starts a 48h timelock for manager transfer.
+ *
+ * @param newManager - Public key of the proposed new manager
+ */
+export function encodeProposeManager(newManager: Buffer): Buffer {
+  return Buffer.concat([
+    disc("propose_manager"),
+    newManager,
+  ]);
+}
+
+/**
+ * Encode execute_manager_transfer instruction data.
+ * Completes a manager transfer after the 48h timelock.
+ */
+export function encodeExecuteManagerTransfer(): Buffer {
+  return Buffer.concat([
+    disc("execute_manager_transfer"),
+  ]);
+}
+
+/**
+ * Encode cancel_manager_transfer instruction data.
+ * Cancels a pending manager transfer.
+ */
+export function encodeCancelManagerTransfer(): Buffer {
+  return Buffer.concat([
+    disc("cancel_manager_transfer"),
+  ]);
+}
+
 // =============================================================================
 // Percolator raw instruction encoders (for direct slab interaction)
 // =============================================================================
