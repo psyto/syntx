@@ -64,4 +64,8 @@ Even 1% of Solana perp TVL at 2% management fee = meaningful revenue at scale.
 
 ## Why Now
 
-Solana's perp landscape is fragmenting: Phoenix Perps launching Q2 2026, Jupiter Perps live, Percolator composable, Drift established. For the first time, there are multiple high-quality venues — but no shared vault layer. The window for establishing the standard vault infrastructure is open now. Syntx is positioned to be that layer.
+Solana's Napster era is ending. The infrastructure is world-class — but the application layer doesn't match. Coinbase and Robinhood are bringing hundreds of millions of users on-chain. Hyperliquid proved that serious trading infrastructure generates $600M+ annualized fees on its own L1, without Solana's composability advantage.
+
+Solana's perp landscape is fragmenting: Phoenix Perps launching Q2 2026, Jupiter Perps live, Percolator composable, Drift established. For the first time, there are multiple high-quality venues — but no shared vault layer. The next wave of users expects institutional-grade experiences, not fragmented single-venue tools.
+
+The window for establishing the standard vault infrastructure is open now. Syntx is positioned to be that layer — composable, exchange-agnostic, built to last.

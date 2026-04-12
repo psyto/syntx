@@ -32,7 +32,7 @@
 
 ### Section 1: Problem (20s)
 
-"Every Solana perp venue builds in isolation. Your vault only works on one DEX. When that DEX goes down, your strategy dies. Solana now has Phoenix, Jupiter Perps, Drift, Percolator — but no shared vault infrastructure."
+"Solana has world-class infrastructure and multiple high-quality perp venues — Phoenix, Jupiter Perps, Percolator, Drift. But every vault is locked to one DEX. When that venue goes down, your strategy dies. There's no shared vault layer. That's a Napster-era problem."
 
 ### Section 2: Solution (30s)
 
@@ -70,38 +70,40 @@
 
 ## Pitch Video Script (3 min, for final submission)
 
-### Who we are (20s)
+### The Shift (30s)
 
-"I'm Hiro from Fabrknt. I've built and operated production vaults on Drift and Hyperliquid — Yogi and Kodiak. Five custom Percolator matchers. Twenty-nine published infrastructure packages. I know the vault stack inside out."
+"Solana's Napster era is ending. The infrastructure is world-class — fastest chain, billions in daily volume, battle-tested under real stress. But the application layer doesn't match the ambition of the infrastructure underneath it."
 
-### Problem (30s)
+"Coinbase and Robinhood are bringing hundreds of millions of users on-chain. Hyperliquid proved that serious trading infrastructure generates six hundred million dollars in annualized fees — on its own L1, without Solana's composability. Imagine what's possible when someone builds at that level on top of Solana."
 
-"Every Solana perp venue builds in isolation. Strategy managers rebuild identical vault infrastructure for each DEX — deposit logic, share accounting, keeper loops, risk management. When Drift was exploited, single-venue vaults lost access overnight."
+### The Problem (20s)
 
-"Solana now has multiple high-quality perp venues — but no shared vault layer to compose across them."
+"Every Solana perp venue builds in isolation. Drift vaults only work on Drift. Jupiter vaults only on Jupiter. When a venue goes down, your strategy dies. Strategy managers rebuild identical infrastructure for each DEX. That's the Napster-era approach — fast, fragmented, not built to last."
 
-### Solution (40s)
+### The Solution (30s)
 
-"Syntx is a composable exchange-agnostic vault layer. Vaults route trades across any venue through a VenueAdapter interface. Today: Percolator, Phoenix, and Jupiter Perps — three different architectures. Tomorrow: Drift, any new DEX."
+"Syntx is a composable exchange-agnostic vault layer. One vault, any venue. We route trades across Percolator, Phoenix, and Jupiter Perps — three fundamentally different architectures — through a single VenueAdapter interface."
 
-"The VenueRouter scores each venue by funding rate, liquidity, and insurance — then routes to the best one. The vault is a PDA. No private key. Circuit breakers, CPI whitelist, configurable trade limits."
+"The vault is a PDA. No private key. Forty-eight hour timelock on manager transfer. Immutable circuit breaker floor. Other protocols compose via CPI — atomic hedging, leveraged yield, treasury management. This is what post-Napster infrastructure looks like."
 
-"Other protocols compose via CPI. A lending protocol can auto-hedge through a vault. A treasury can deploy idle capital. All in one atomic transaction."
+### Who we are (15s)
+
+"I'm Hiro from Fabrknt. I run production vaults on Drift mainnet and Hyperliquid mainnet — Yogi and Kodiak. Twenty-nine published infrastructure packages. Five Percolator matchers. Syntx is the architecture I wished existed while building those."
 
 ### Traction (20s)
 
-"Live on devnet. Two vaults with deposits. Seventeen Anchor instructions. Twenty-seven tests. Four venue adapters across three architectures. Complete TypeScript SDK. Five frontend pages at fabrknt.com/vaults."
+"Live on devnet. Seventeen Anchor instructions. Twenty-seven tests. Four venue adapters across three architectures. Complete TypeScript SDK. Five frontend pages. Mobile-responsive. CPI examples. Business plan."
 
-"48-hour timelock on manager transfer. Immutable circuit breaker floor. CPI examples and venue adapter skeletons. Business plan. CONTRIBUTING guide."
+"This isn't a prototype — it's a submission-ready product waiting for an audit to unlock mainnet."
 
-### Business Model (20s)
+### Business Model (15s)
 
-"Protocol-managed vaults charge two percent management and twenty percent performance fees — enforced on-chain. Third-party vault creators set their own fees. Syntx takes a half-percent protocol fee. Long-term: institutional CPI access fees."
+"Two percent management, twenty percent performance fees — enforced on-chain. Half-percent protocol fee on third-party vaults. The same economics as traditional hedge funds, fully transparent and verifiable."
 
-### Ask (20s)
+### Ask (15s)
 
-"We need audit funding — fifty to a hundred thousand dollars. The code is fifteen instructions. An audit unlocks mainnet. We're applying to the Colosseum accelerator for funding, distribution, and first institutional integrators."
+"We need audit funding — fifty to a hundred thousand dollars. Seventeen instructions, clean code, twenty-seven tests. An audit unlocks mainnet. We're applying to the Colosseum accelerator for funding and distribution."
 
-### Close (10s)
+### Close (15s)
 
-"Syntx. Composable exchange-agnostic vaults on Solana. The vault layer every perp venue needs. Built by Fabrknt. Open source."
+"Solana's infrastructure grew up. It's time for the applications on top to catch up. Syntx is built for the next era — serious vault infrastructure for serious capital. Composable. Exchange-agnostic. Built to last."
