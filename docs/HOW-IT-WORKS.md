@@ -279,12 +279,13 @@ The keeper is a TypeScript program that runs 24/7. It is **venue-agnostic** — 
 
 ### Venue Adapters
 
-The keeper supports three modes:
+The keeper supports four modes:
 
 | Mode | Env Var | What |
 |---|---|---|
-| Single venue (Percolator) | `VENUE=percolator` | Trade on Percolator only |
-| Single venue (Phoenix) | `VENUE=phoenix` | Trade on Phoenix V1 spot only |
+| Single venue (Percolator) | `VENUE=percolator` | Trade on Percolator only (slab-based) |
+| Single venue (Phoenix) | `VENUE=phoenix` | Trade on Phoenix V1 spot only (CLOB) |
+| Single venue (Jupiter Perps) | `VENUE=jupiter` | Trade on Jupiter Perps only (oracle-based AMM) |
 | Multi-venue router | `VENUE=router` | Score all venues, route to best |
 
 Adding a new venue means implementing the `VenueAdapter` interface (6 methods):
@@ -333,8 +334,9 @@ PERCOLATOR_SLAB=J55KavPouZg8ZeWnTY77ZBL2DdQskzKpkFvuTtbUNzYC
 VAULT_PDA=4pL2aQawAbc2XwjRE9ptrH4yxihn4BL2uVMavgZrtYUK
 COLLATERAL_MINT=2uGTCDSfisKCTN2Yd8umXiWJzfRpWe8mhZM6WCK2vj8D
 CRANK_INTERVAL_MS=30000
-VENUE=percolator                    # or phoenix, or router
+VENUE=percolator                    # or phoenix, jupiter, or router
 PHOENIX_MARKET=4DoNfFBfF7UokCC2...  # required for phoenix/router
+JUPITER_MARKET=SOL                  # SOL, BTC, or ETH — required for jupiter/router
 ```
 
 ---

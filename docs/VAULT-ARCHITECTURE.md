@@ -183,9 +183,10 @@ The on-chain vault program is venue-agnostic in design — it CPI calls into wha
 ```
 Keeper (TypeScript)
   └── VenueRouter (implements VenueAdapter)
-       ├── PercolatorAdapter → Percolator (on-chain perp)
-       ├── PhoenixAdapter    → Phoenix V1 (on-chain spot)
-       └── [future]          → Jupiter Perps, Drift, etc.
+       ├── PercolatorAdapter      → Percolator (slab-based perp)
+       ├── PhoenixAdapter         → Phoenix V1 (CLOB spot)
+       ├── JupiterPerpsAdapter    → Jupiter Perps (oracle-based AMM perp)
+       └── [future]               → Drift, etc.
 ```
 
 ### VenueAdapter Interface
@@ -205,11 +206,11 @@ interface VenueAdapter {
 
 ### VenueRouter Scoring
 
-Each tick, the router scores all venues:
-- **Perp venues**: funding rate magnitude (higher = more yield)
+Each tick, the router scores all venues (Percolator, Phoenix, Jupiter Perps):
+- **Perp venues** (Percolator, Jupiter Perps): funding rate magnitude (higher = more yield)
 - **All venues**: orderbook depth / account count (liquidity proxy)
 - **Perp venues**: insurance balance bonus (safety)
-- **Spot venues**: baseline score
+- **Spot venues** (Phoenix): baseline score
 
 Highest-scoring venue receives the trade. All venues are cranked regardless.
 

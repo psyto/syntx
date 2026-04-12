@@ -18,7 +18,7 @@ Syntx is a composable exchange-agnostic vault layer for Solana perps. Vaults rou
 | 5. Composability | Done | Jupiter swap, share price oracle, CPI trade interface |
 | 6. Multi-vault | Done | Permissionless vault creation, marketplace UI |
 | 7. Security Hardening | Done | Circuit breakers, CPI whitelist, drawdown limits |
-| 8. Venue Adapters | Done | VenueAdapter interface, PercolatorAdapter, PhoenixAdapter |
+| 8. Venue Adapters | Done | VenueAdapter interface, PercolatorAdapter, PhoenixAdapter, JupiterPerpsAdapter |
 | 9. VenueRouter | Done | Multi-venue scoring and routing |
 | 10. Frontend Reframe | Done | Exchange-agnostic positioning, vault UX polish, error boundaries |
 | 11. Documentation | Done | README, business plan, CPI examples, CONTRIBUTING.md |
@@ -51,9 +51,11 @@ Security:
 ### Venue Adapter Pattern (exchange-agnostic)
 
 - VenueAdapter interface — 6 methods any DEX implements
-- PercolatorAdapter — slab parsing, oracle push, funding crank, trade execution
-- PhoenixAdapter — Phoenix V1 spot orderbook via @ellipsis-labs/phoenix-sdk
+- PercolatorAdapter — slab-based perp, oracle push, funding crank, trade execution
+- PhoenixAdapter — CLOB spot orderbook via @ellipsis-labs/phoenix-sdk
+- JupiterPerpsAdapter — oracle-based AMM perp, SOL/BTC/ETH markets (JUPITER_MARKET env var)
 - VenueRouter — scores venues by funding rate, liquidity, insurance; routes to best
+- 3 architectures covered: slab-based (Percolator), CLOB (Phoenix), oracle-based AMM (Jupiter Perps)
 
 ### Tests (27 passing)
 
@@ -79,7 +81,7 @@ Negative (12):
 - Venue-agnostic: calls VenueAdapter methods, not venue-specific code
 - Funding Rate Harvest strategy (ported from Yogi)
 - Vol regime x signal severity → deployment matrix
-- VENUE=percolator|phoenix|router via env var
+- VENUE=percolator|phoenix|jupiter|router via env var
 - Running live on devnet, cranking every 30 seconds
 
 ### Frontend (5 pages)
@@ -136,3 +138,5 @@ Negative (12):
 | SOL Funding Rate Vault | `4pL2aQawAbc2XwjRE9ptrH4yxihn4BL2uVMavgZrtYUK` |
 | SOL Delta Neutral Vault | `9g39fL79XnwHBLCPT1GqixEmJp7z5LLzjWWiaMpcKDhK` |
 | Phoenix SOL/USDC Market | `4DoNfFBfF7UokCC2FQzriy7yHK6DY6NVdYpuekQ5pRgg` |
+| Jupiter Perps Program | `PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu` |
+| Jupiter SOL Custody | `7xS2gz2bTp3fwCC7knJvUWTEU9Tycczu6VhJYKgi1wdz` |

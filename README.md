@@ -57,11 +57,12 @@ interface VenueAdapter {
 
 | Adapter | Venue | Type | Status |
 |---|---|---|---|
-| `PercolatorAdapter` | Percolator (Anatoly Yakovenko) | perp | Live on devnet |
-| `PhoenixAdapter` | Phoenix V1 (Ellipsis Labs) | spot | Integrated |
+| `PercolatorAdapter` | Percolator (Anatoly Yakovenko) | perp (slab-based) | Live on devnet |
+| `PhoenixAdapter` | Phoenix V1 (Ellipsis Labs) | spot (CLOB) | Integrated |
+| `JupiterPerpsAdapter` | Jupiter Perps | perp (oracle-based AMM) | Integrated |
 | `VenueRouter` | Multi-venue scoring | hybrid | Live |
 
-Switch venues with one env var: `VENUE=percolator`, `VENUE=phoenix`, or `VENUE=router` (multi-venue).
+Switch venues with one env var: `VENUE=percolator`, `VENUE=phoenix`, `VENUE=jupiter`, or `VENUE=router` (multi-venue).
 
 ## Why Composable Matters
 
@@ -149,6 +150,8 @@ cd keeper && npx ts-node src/setup-devnet.ts
 | SOL Funding Rate Vault | `4pL2aQawAbc2XwjRE9ptrH4yxihn4BL2uVMavgZrtYUK` |
 | SOL Delta Neutral Vault | `9g39fL79XnwHBLCPT1GqixEmJp7z5LLzjWWiaMpcKDhK` |
 | Phoenix SOL/USDC Market | `4DoNfFBfF7UokCC2FQzriy7yHK6DY6NVdYpuekQ5pRgg` |
+| Jupiter Perps Program | `PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu` |
+| Jupiter SOL Custody | `7xS2gz2bTp3fwCC7knJvUWTEU9Tycczu6VhJYKgi1wdz` |
 
 ## Project Structure
 
@@ -161,13 +164,14 @@ syntx/
 │   └── src/
 │       ├── venues/
 │       │   ├── types.ts        # VenueAdapter interface
-│       │   ├── percolator.ts   # PercolatorAdapter
-│       │   ├── phoenix.ts      # PhoenixAdapter (Phoenix V1 SDK)
+│       │   ├── percolator.ts   # PercolatorAdapter (slab-based)
+│       │   ├── phoenix.ts      # PhoenixAdapter (Phoenix V1 SDK, CLOB)
+│       │   ├── jupiter.ts      # JupiterPerpsAdapter (oracle-based AMM)
 │       │   └── router.ts       # VenueRouter (multi-venue scoring)
 │       ├── keeper.ts           # Venue-agnostic keeper loop
 │       ├── strategy.ts         # Funding Rate Harvest strategy
 │       ├── slab.ts             # Percolator slab parser
-│       └── config.ts           # VENUE=percolator|phoenix|router
+│       └── config.ts           # VENUE=percolator|phoenix|jupiter|router
 ├── sdk/
 │   └── src/
 │       ├── client.ts           # SyntxClient class
@@ -216,6 +220,7 @@ syntx/
 |---|---|
 | [Percolator](https://github.com/aeyakovenko/percolator) | Formally verified perp risk engine by Anatoly Yakovenko |
 | [Phoenix](https://www.phoenix.trade/) | Composable spot orderbook by Ellipsis Labs |
+| [Jupiter Perps](https://www.jup.ag/perps) | Oracle-based AMM perpetuals |
 | [percolator-fabrknt](https://github.com/psyto/percolator-fabrknt) | 5 custom matching strategies by Fabrknt |
 
 ## Track Record
@@ -237,6 +242,7 @@ Syntx's strategy logic is battle-tested on production vaults:
 | Keeper + devnet deployment | Done |
 | Venue adapter pattern | Done |
 | Phoenix V1 integration | Done |
+| Jupiter Perps integration | Done |
 | VenueRouter (multi-venue) | Done |
 | Frontend (5 pages) | Done |
 | CPI composability | Done |

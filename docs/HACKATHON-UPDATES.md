@@ -8,9 +8,11 @@
 - Venue-agnostic keeper loop
 - Factory pattern: VENUE=percolator|phoenix
 
-### Week 2: Phoenix + Router + Frontend + Security
-- PhoenixAdapter (Phoenix V1 spot SDK)
+### Week 2: Phoenix + Jupiter + Router + Frontend + Security
+- PhoenixAdapter (Phoenix V1 spot SDK, CLOB architecture)
+- JupiterPerpsAdapter (oracle-based AMM, SOL/BTC/ETH markets)
 - VenueRouter (multi-venue scoring and routing)
+- 3 venue architectures covered: slab-based, CLOB, oracle-based AMM
 - Frontend reframed: "Composable Exchange-Agnostic Vaults"
 - Vault UX: named vaults, Max button, dollar withdraw, toasts
 - 2 live vaults on devnet
@@ -32,7 +34,7 @@
 
 ### Section 2: Solution (30s)
 
-"Syntx is a composable exchange-agnostic vault layer. Vaults route trades across any venue through a VenueAdapter interface — Percolator for perps, Phoenix for spot, Jupiter Perps when available. Same strategy, best execution."
+"Syntx is a composable exchange-agnostic vault layer. Vaults route trades across any venue through a VenueAdapter interface — Percolator for slab-based perps, Phoenix for CLOB spot, Jupiter Perps for oracle-based AMM perps. Three architectures, same strategy, best execution."
 
 "The vault is a Program-Derived Address. No private key. A 48-hour timelock prevents instant manager takeover. An immutable circuit breaker floor ensures protections can never be disabled. The VenueRouter scores each DEX by funding rate, liquidity, and cost — then routes to the best one."
 
@@ -60,7 +62,7 @@
 
 "This isn't our first vault. Yogi runs live on Drift mainnet. Kodiak runs live on Hyperliquid. Syntx is the architecture we wished existed — exchange-agnostic from day one."
 
-"Seventeen instructions. Twenty-seven tests. Three venue adapters. 48-hour timelock. Immutable circuit breaker floor. Full SDK. Live on devnet. Syntx — composable exchange-agnostic vaults on Solana."
+"Seventeen instructions. Twenty-seven tests. Four venue adapters across three architectures. 48-hour timelock. Immutable circuit breaker floor. Full SDK. Live on devnet. Syntx — composable exchange-agnostic vaults on Solana."
 
 ---
 
@@ -78,7 +80,7 @@
 
 ### Solution (40s)
 
-"Syntx is a composable exchange-agnostic vault layer. Vaults route trades across any venue through a VenueAdapter interface. Today: Percolator and Phoenix. Tomorrow: Jupiter Perps, Drift, any new DEX."
+"Syntx is a composable exchange-agnostic vault layer. Vaults route trades across any venue through a VenueAdapter interface. Today: Percolator, Phoenix, and Jupiter Perps — three different architectures. Tomorrow: Drift, any new DEX."
 
 "The VenueRouter scores each venue by funding rate, liquidity, and insurance — then routes to the best one. The vault is a PDA. No private key. Circuit breakers, CPI whitelist, configurable trade limits."
 
@@ -86,7 +88,7 @@
 
 ### Traction (20s)
 
-"Live on devnet. Two vaults with deposits. Seventeen Anchor instructions. Twenty-seven tests. Three venue adapters. Complete TypeScript SDK. Five frontend pages at fabrknt.com/vaults."
+"Live on devnet. Two vaults with deposits. Seventeen Anchor instructions. Twenty-seven tests. Four venue adapters across three architectures. Complete TypeScript SDK. Five frontend pages at fabrknt.com/vaults."
 
 "48-hour timelock on manager transfer. Immutable circuit breaker floor. CPI examples and venue adapter skeletons. Business plan. CONTRIBUTING guide."
 
