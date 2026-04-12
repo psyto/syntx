@@ -31,6 +31,8 @@ function readU64LE(d: Uint8Array, off: number): bigint {
 
 interface VaultEntry {
   pubkey: string;
+  name: string;
+  venue: string;
   manager: string;
   collateralMint: string;
   slab: string;
@@ -42,7 +44,18 @@ interface VaultEntry {
   initialized: boolean;
 }
 
-function parseVaultEntry(pubkey: PublicKey, data: Uint8Array): VaultEntry | null {
+// Derive human-readable vault name from on-chain state
+const KNOWN_SLABS: Record<string, { name: string; venue: string }> = {
+  "J55KavPouZg8ZeWnTY77ZBL2DdQskzKpkFvuTtbUNzYC": { name: "SOL Funding Rate", venue: "Percolator" },
+};
+
+function deriveVaultName(pubkey: string, slab: string, index: number): { name: string; venue: string } {
+  const known = KNOWN_SLABS[slab];
+  if (known) return known;
+  return { name: `Strategy Vault #${index + 1}`, venue: "Percolator" };
+}
+
+function parseVaultEntry(pubkey: PublicKey, data: Uint8Array, index: number): VaultEntry | null {
   if (data.length < 200) return null;
   // Verify discriminator
   for (let i = 0; i < 8; i++) {
@@ -64,8 +77,11 @@ function parseVaultEntry(pubkey: PublicKey, data: Uint8Array): VaultEntry | null
   const paused = data[off] !== 0; off += 1;
   const initialized = data[off] !== 0;
 
+  const pk = pubkey.toBase58();
+  const { name, venue } = deriveVaultName(pk, slab, index);
+
   return {
-    pubkey: pubkey.toBase58(), manager, collateralMint, slab,
+    pubkey: pk, name, venue, manager, collateralMint, slab,
     totalShares, totalDeposits, perfFeeBps, mgmtFeeBps, paused, initialized,
   };
 }
@@ -91,8 +107,9 @@ export default function VaultList() {
       });
 
       const parsed: VaultEntry[] = [];
-      for (const { pubkey, account } of accounts) {
-        const entry = parseVaultEntry(pubkey, new Uint8Array(account.data));
+      for (let i = 0; i < accounts.length; i++) {
+        const { pubkey, account } = accounts[i];
+        const entry = parseVaultEntry(pubkey, new Uint8Array(account.data), i);
         if (entry) parsed.push(entry);
       }
       setVaults(parsed);
@@ -152,7 +169,10 @@ export default function VaultList() {
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-[var(--text-dim)] mr-1">{isExpanded ? "▼" : "▶"}</span>
-                      <span className="font-mono text-sm">{short(v.pubkey)}</span>
+                      <span className="font-semibold text-sm">{v.name}</span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-950 text-blue-400">
+                        {v.venue}
+                      </span>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${v.initialized ? (v.paused ? "bg-red-950 text-[var(--red)]" : "bg-green-950 text-[var(--green)]") : "bg-yellow-950 text-yellow-400"}`}>
                         {v.initialized ? (v.paused ? "PAUSED" : "ACTIVE") : "SETUP"}
                       </span>
@@ -162,10 +182,10 @@ export default function VaultList() {
                     </span>
                   </div>
                   <div className="flex gap-6 text-xs text-[var(--text-muted)]">
-                    <span>TVL: {(Number(v.totalDeposits) / 1_000_000).toFixed(2)}</span>
+                    <span>TVL: {(Number(v.totalDeposits) / 1_000_000).toFixed(2)} USDC</span>
                     <span>Shares: {v.totalShares.toLocaleString()}</span>
                     <span>Manager: {short(v.manager)}</span>
-                    <span>Slab: {short(v.slab)}</span>
+                    <span className="font-mono text-[var(--text-dim)]">{short(v.pubkey)}</span>
                   </div>
                 </button>
 
