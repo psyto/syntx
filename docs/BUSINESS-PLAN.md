@@ -21,10 +21,20 @@ Syntx is the vault management layer for Solana perps — like Stripe for payment
 
 ## Total Addressable Market
 
-- Solana daily perp volume: $1-3B across Drift, Jupiter Perps, and growing
-- Hyperliquid vault TVL: $36M+ (Liminal $30M, Harmonix $6M) — proves demand
-- Structured DeFi products on Solana: nascent but growing with JLP ($500M+)
-- Protocol treasury hedging: every Solana protocol with SOL treasury exposure needs this
+**Global perps market (2025, a16z research):**
+- CEX perp volume: $86.2 trillion (+47% YoY)
+- DEX perp volume: $6.7 trillion (+346% YoY)
+- DEX/CEX ratio: 2.5% → 7.8% in one year — DEXes gaining share rapidly
+- RWA perps: 44% of Hyperliquid volume — the asset universe is expanding
+
+**Solana-specific:**
+- Solana DEX volume crossed $1 trillion in 2025
+- Multiple perp venues: Jupiter Perps, Drift, Percolator, Phoenix (launching Q2 2026)
+- Hyperliquid vault TVL: $36M+ (Liminal $30M, Harmonix $6M) — proves vault demand
+- JLP: $500M+ — proves structured product demand on Solana
+
+**Where value accrues:**
+In traditional markets, Robinhood (retail broker) commands a higher market cap than Nasdaq (the exchange). Value accrues to the infrastructure layer above exchanges, not the exchanges themselves. Syntx is that layer for Solana perps — sitting above Percolator, Phoenix, and Jupiter Perps, providing vault infrastructure that routes across them.
 
 Even 1% of Solana perp TVL at 2% management fee = meaningful revenue at scale.
 
@@ -35,6 +45,7 @@ Even 1% of Solana perp TVL at 2% management fee = meaningful revenue at scale.
 3. **Battle-tested** — same strategy code runs on Drift mainnet (Yogi) and Hyperliquid mainnet (Kodiak)
 4. **CPI-native** — other protocols compose atomically, not through bridges or oracles
 5. **Formally verified execution** — Percolator's H ratio mathematically prevents insolvency
+6. **Right layer in the stack** — a16z identifies "specialized liquidity provision / cross-venue inventory management" as a key builder category. Syntx is that category.
 
 ## Go-to-Market
 

@@ -72,9 +72,9 @@
 
 ### The Shift (30s)
 
-"Solana's Napster era is ending. The infrastructure is world-class — fastest chain, billions in daily volume, battle-tested under real stress. But the application layer doesn't match the ambition of the infrastructure underneath it."
+"Perpetual futures did eighty-six trillion dollars in centralized exchange volume last year. Decentralized perps grew three hundred and forty-six percent to six point seven trillion. Real-world asset perps are now forty-four percent of Hyperliquid's volume. This isn't a niche crypto instrument anymore — perps are rewriting global trading."
 
-"Coinbase and Robinhood are bringing hundreds of millions of users on-chain. Hyperliquid proved that serious trading infrastructure generates six hundred million dollars in annualized fees — on its own L1, without Solana's composability. Imagine what's possible when someone builds at that level on top of Solana."
+"But Solana's Napster era is ending. The infrastructure is world-class. Coinbase and Robinhood are bringing hundreds of millions of users on-chain. The question isn't whether perps will scale — it's who builds the most valuable infrastructure around them as they do."
 
 ### The Problem (20s)
 
@@ -98,7 +98,7 @@
 
 ### Business Model (15s)
 
-"Two percent management, twenty percent performance fees — enforced on-chain. Half-percent protocol fee on third-party vaults. The same economics as traditional hedge funds, fully transparent and verifiable."
+"In traditional markets, Robinhood commands a higher market cap than Nasdaq — value accrues to the infrastructure layer above exchanges, not the exchanges themselves. Syntx is that layer for Solana perps. Two percent management, twenty percent performance fees — enforced on-chain."
 
 ### Ask (15s)
 
