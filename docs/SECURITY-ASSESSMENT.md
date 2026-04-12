@@ -12,30 +12,32 @@ On April 1, 2026, Drift Protocol was exploited for $285M through multisig govern
 | Durable nonce exploitation | Pre-signed TX held indefinitely until optimal moment | **Not exposed** — no multisig approval pipeline |
 | Fake collateral (CVT) creation | Admin created worthless token as collateral | **Not exposed** — vault trades on existing Percolator slabs |
 | Oracle manipulation | Admin switched to attacker-controlled oracle | **Partially exposed** — Percolator slab admin controls oracle |
-| Withdrawal limit relaxation | Admin raised limits before draining | **Exposed** — manager can call `set_circuit_breaker` to remove limits |
-| Admin transfer | Ownership transferred with no delay | **Exposed** — `update_manager` is instant, no timelock |
-| Staged multi-week operation | Attacker prepared over weeks undetected | **Exposed** — no on-chain monitoring or anomaly detection |
+| Withdrawal limit relaxation | Admin raised limits before draining | **Mitigated** — `min_drawdown_bps` is immutable floor, manager cannot disable |
+| Admin transfer | Ownership transferred with no delay | **Mitigated** — 48h timelock on `propose_manager` → `execute_manager_transfer` |
+| Staged multi-week operation | Attacker prepared over weeks undetected | **Partially mitigated** — 48h timelock gives detection window; monitoring TBD |
 
 ## Syntx-Specific Vulnerabilities
 
-### Critical: Single manager key = single point of failure
+### ~~Critical~~ Mitigated: Single manager key = single point of failure
 
 Drift required compromising 2 of 5 signers. Syntx requires compromising 1 key.
 
 If the manager key is compromised, the attacker can:
-1. `manager_trade` — make adverse trades to drain vault value
-2. `update_manager` — transfer management to attacker's address
-3. `set_circuit_breaker(0, default, 0)` — disable all protections
+1. `manager_trade` — make adverse trades to drain vault value (**bounded by circuit breaker floor**)
+2. `propose_manager` — propose transfer to attacker's address (**but 48h delay gives time to detect and cancel**)
+3. `set_circuit_breaker` — ~~disable all protections~~ **cannot reduce below `min_drawdown_bps` floor**
 4. `set_paused(false)` — unpause if someone detects and pauses
 5. `collect_fees` — mint excess fee shares with inflated equity input
 
-### Critical: No timelock on administrative actions
+**Remaining gap:** Squads multisig not yet implemented. Single key + timelock is better than single key alone, but multisig is the full solution. Planned post-audit.
 
-`update_manager` and `set_circuit_breaker` execute instantly. No delay for detection or intervention.
+### ~~Critical~~ Implemented: Timelock on administrative actions
 
-### Medium: Circuit breakers are manager-configurable
+`propose_manager` starts a 48-hour timelock. `execute_manager_transfer` can only succeed after the timelock elapses. Either the current or pending manager can execute. The current manager can `cancel_manager_transfer` at any time.
 
-The manager can disable their own circuit breakers at any time. This means circuit breakers protect against market risk but NOT against manager compromise.
+### ~~Medium~~ Implemented: Immutable circuit breaker floor
+
+`min_drawdown_bps` is set at vault creation and **cannot be reduced** — ever. The manager can call `set_circuit_breaker` to strengthen protections (raise the limit) but cannot weaken them below the floor. Depositors can verify this value on-chain before depositing.
 
 ### Medium: `collect_fees` accepts off-chain equity input
 
@@ -60,49 +62,50 @@ Syntx doesn't create collateral markets. It trades on existing Percolator slabs.
 
 Even if a trade goes badly, Percolator's formally verified risk engine ensures no user withdraws more than exists. This is a fundamentally different architecture than Drift's.
 
-## Recommended Mitigations (Pre-Mainnet)
+## Mitigations — Status
 
-### Priority 1: Timelock on admin actions
+### Priority 1: Timelock on admin actions — IMPLEMENTED
 
 ```
-update_manager → 48-hour delay, publicly visible pending change
-set_circuit_breaker → 24-hour delay when reducing protections
-                      (increasing protections = immediate)
+propose_manager(new_manager)        → starts 48h timelock
+execute_manager_transfer()          → succeeds only after 48h
+cancel_manager_transfer()           → cancels pending transfer
 ```
 
-Implementation: add `pending_manager`, `pending_manager_slot`, and require a second `finalize_update_manager` call after the delay.
+Implemented with `pending_manager`, `pending_manager_timestamp` in VaultState. Tested: propose → fail before timelock → warp 49h → succeed. Cancel test: propose → cancel → warp → fail.
 
-### Priority 2: Multisig or Squads integration for manager
+### Priority 2: Immutable circuit breaker floor — IMPLEMENTED
+
+```
+init_vault(..., min_drawdown_bps=500)   → 5% floor set at creation
+set_circuit_breaker(200, ...)           → REJECTED (below floor)
+set_circuit_breaker(1000, ...)          → OK (above floor)
+```
+
+`min_drawdown_bps` in VaultState cannot be modified after creation. Depositors verify on-chain before depositing.
+
+### Priority 3: Multisig via Squads — PLANNED (post-audit)
 
 Replace single EOA manager with a Squads multisig:
 - 2-of-3 or 3-of-5 for trades
 - 3-of-5 for admin actions
-- Higher threshold than Drift's 2-of-5
+- Squads + timelock = full protection
 
-Note: Squads itself was not the vulnerability in Drift. The vulnerability was zero timelock + durable nonce exploitation. Squads with timelocks is still the right pattern.
+### Priority 4: On-chain equity for `collect_fees` — PLANNED
 
-### Priority 3: On-chain equity for `collect_fees`
+Read equity from Percolator slab instead of accepting off-chain input.
 
-Read equity from Percolator slab instead of accepting off-chain input. This prevents a compromised manager from inflating fee collection.
+### Priority 5: On-chain monitoring — PLANNED
 
-### Priority 4: Immutable circuit breaker floor
-
-Add a minimum circuit breaker that cannot be disabled:
-```
-min_drawdown_bps: u16  // set at vault creation, immutable
-                       // manager's max_drawdown_bps must be >= this
-```
-
-### Priority 5: On-chain monitoring
-
-Emit events for all admin actions so off-chain monitoring can detect anomalies:
-- `update_manager` called → alert
-- `set_circuit_breaker` protections reduced → alert
-- Large position change (> 50% of capital) → alert
-- Multiple trades in rapid succession → alert
+Emit events for admin actions so off-chain monitoring can detect anomalies.
 
 ## Summary
 
-Syntx is NOT vulnerable to the specific Drift exploit (multisig + durable nonce). But it has its own governance risk: single manager key with no timelock. The vault PDA pattern provides strong protection against direct fund theft, but a compromised manager can still cause significant damage through adverse trading and admin changes.
+Syntx is NOT vulnerable to the specific Drift exploit (multisig + durable nonce). The two most critical governance risks identified — instant manager transfer and disableable circuit breakers — are now mitigated:
 
-**The audit must specifically review the manager privilege surface.** The mitigations above should be implemented before mainnet.
+1. **48h timelock** on manager transfer gives depositors a detection window
+2. **Immutable circuit breaker floor** prevents the manager from disabling protections
+
+Remaining gaps (multisig, on-chain equity for fees, monitoring) are planned for post-audit implementation. The vault PDA pattern provides strong protection against direct fund theft, and the timelock + immutable floor significantly reduce the damage a compromised manager key can cause.
+
+**The audit must specifically review:** timelock implementation, min_drawdown_bps enforcement, CPI boundary with Percolator, and share price manipulation vectors.

@@ -8,14 +8,16 @@
 - Venue-agnostic keeper loop
 - Factory pattern: VENUE=percolator|phoenix
 
-### Week 2: Phoenix + Router + Frontend
+### Week 2: Phoenix + Router + Frontend + Security
 - PhoenixAdapter (Phoenix V1 spot SDK)
 - VenueRouter (multi-venue scoring and routing)
 - Frontend reframed: "Composable Exchange-Agnostic Vaults"
 - Vault UX: named vaults, Max button, dollar withdraw, toasts
 - 2 live vaults on devnet
 - SDK completed (buildDepositTx, buildWithdrawTx)
-- 25 tests passing
+- 48h timelock on manager transfer (propose → wait → execute)
+- Immutable circuit breaker floor (min_drawdown_bps)
+- 27 tests passing
 - README rewrite + business plan
 - CPI examples + venue adapter skeleton
 - CONTRIBUTING.md, JSDoc, error boundaries
@@ -32,7 +34,7 @@
 
 "Syntx is a composable exchange-agnostic vault layer. Vaults route trades across any venue through a VenueAdapter interface — Percolator for perps, Phoenix for spot, Jupiter Perps when available. Same strategy, best execution."
 
-"The vault is a Program-Derived Address. No private key. The VenueRouter scores each DEX by funding rate, liquidity, and cost — then routes to the best one automatically."
+"The vault is a Program-Derived Address. No private key. A 48-hour timelock prevents instant manager takeover. An immutable circuit breaker floor ensures protections can never be disabled. The VenueRouter scores each DEX by funding rate, liquidity, and cost — then routes to the best one."
 
 ### Section 3: Live Demo (60s)
 
@@ -58,7 +60,7 @@
 
 "This isn't our first vault. Yogi runs live on Drift mainnet. Kodiak runs live on Hyperliquid. Syntx is the architecture we wished existed — exchange-agnostic from day one."
 
-"Fifteen instructions. Twenty-five tests. Three venue adapters. Full SDK. Live on devnet. Syntx — composable exchange-agnostic vaults on Solana."
+"Seventeen instructions. Twenty-seven tests. Three venue adapters. 48-hour timelock. Immutable circuit breaker floor. Full SDK. Live on devnet. Syntx — composable exchange-agnostic vaults on Solana."
 
 ---
 
@@ -84,9 +86,9 @@
 
 ### Traction (20s)
 
-"Live on devnet. Two vaults with deposits. Fifteen Anchor instructions. Twenty-five tests. Three venue adapters. Complete TypeScript SDK. Five frontend pages at fabrknt.com/vaults."
+"Live on devnet. Two vaults with deposits. Seventeen Anchor instructions. Twenty-seven tests. Three venue adapters. Complete TypeScript SDK. Five frontend pages at fabrknt.com/vaults."
 
-"CPI examples and venue adapter skeletons in the repo. Business plan. CONTRIBUTING guide."
+"48-hour timelock on manager transfer. Immutable circuit breaker floor. CPI examples and venue adapter skeletons. Business plan. CONTRIBUTING guide."
 
 ### Business Model (20s)
 

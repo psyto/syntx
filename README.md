@@ -72,11 +72,11 @@ Switch venues with one env var: `VENUE=percolator`, `VENUE=phoenix`, or `VENUE=r
 | Can't use position as collateral | Vault shares are SPL tokens — usable anywhere |
 | Locked to one venue | VenueRouter picks best execution across DEXes |
 
-## Vault Program (15 Instructions)
+## Vault Program (17 Instructions)
 
 | Instruction | Who | Purpose |
 |---|---|---|
-| `init_vault` | Anyone | Create a new vault |
+| `init_vault` | Anyone | Create a new vault (sets immutable min_drawdown_bps floor) |
 | `register_on_percolator` | Manager | Register vault on Percolator market |
 | `set_percolator_idx` | Manager | Store account index |
 | `deposit` | Any user | Deposit collateral, receive shares |
@@ -84,9 +84,11 @@ Switch venues with one env var: `VENUE=percolator`, `VENUE=phoenix`, or `VENUE=r
 | `manager_trade` | Manager | Execute trades via vault PDA |
 | `manager_crank` | Manager | Settle funding payments |
 | `collect_fees` | Manager | Performance + management fees |
-| `update_manager` | Manager | Transfer management |
+| `propose_manager` | Manager | Propose manager transfer (48h timelock) |
+| `execute_manager_transfer` | Manager/Pending | Execute transfer after 48h timelock |
+| `cancel_manager_transfer` | Manager | Cancel pending manager transfer |
 | `set_paused` | Manager | Emergency stop |
-| `set_circuit_breaker` | Manager | Configure drawdown limit, CPI whitelist, trade size caps |
+| `set_circuit_breaker` | Manager | Configure drawdown limit (cannot go below floor), CPI whitelist, trade size caps |
 | `get_share_price` | Anyone | On-chain share price oracle |
 | `cpi_trade` | Whitelisted program | Public CPI trading interface |
 
@@ -94,13 +96,15 @@ Switch venues with one env var: `VENUE=percolator`, `VENUE=phoenix`, or `VENUE=r
 
 | Threat | Protection |
 |---|---|
-| Manager steals funds | Vault PDA has no private key — withdrawals go to share holders |
+| Manager key compromised | **48h timelock** on manager transfer — propose → wait → execute. Cancel if detected. |
+| Manager disables protection | **Immutable circuit breaker floor** — min_drawdown_bps set at vault creation, cannot be reduced |
+| Manager drains via bad trades | Circuit breaker auto-rejects trades beyond max drawdown from peak equity |
 | Exchange insolvency | Percolator H ratio — mathematically proven fair exits |
-| Excessive drawdown | Circuit breaker — auto-rejects trades beyond max drawdown |
 | Malicious CPI callers | CPI whitelist — vault manager restricts which programs can trade |
 | Oversized CPI trades | Configurable per-vault max trade size |
+| Direct fund theft | Vault PDA has no private key — only the program can sign |
 
-**Honest assessment:** Syntx is unaudited. 20+ tests pass but tests != audit. Security audit (~$50-100K) is required before mainnet. See [SECURITY-ASSESSMENT.md](docs/SECURITY-ASSESSMENT.md).
+**Honest assessment:** Syntx is unaudited. 27 tests pass but tests != audit. Security audit (~$50-100K) is required before mainnet. See [SECURITY-ASSESSMENT.md](docs/SECURITY-ASSESSMENT.md).
 
 ## Composability Recipes
 
@@ -151,8 +155,8 @@ cd keeper && npx ts-node src/setup-devnet.ts
 ```
 syntx/
 ├── programs/syntx-vault/
-│   ├── src/lib.rs              # Vault program (1,199 LOC, 15 instructions)
-│   └── tests/integration.rs    # 20+ LiteSVM tests
+│   ├── src/lib.rs              # Vault program (17 instructions, timelock, immutable floor)
+│   └── tests/integration.rs    # 27 LiteSVM tests
 ├── keeper/
 │   └── src/
 │       ├── venues/
@@ -237,7 +241,10 @@ Syntx's strategy logic is battle-tested on production vaults:
 | Frontend (5 pages) | Done |
 | CPI composability | Done |
 | Circuit breakers | Done |
+| 48h timelock on manager transfer | Done |
+| Immutable circuit breaker floor | Done |
 | Security audit | Pending (~$50-100K) |
+| Multisig via Squads | Post-audit |
 | Mainnet launch | After audit |
 
 ## License

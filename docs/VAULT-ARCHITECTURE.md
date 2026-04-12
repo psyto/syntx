@@ -38,6 +38,13 @@ pub struct VaultState {
     pub peak_equity: u64,            // Highest recorded equity
     pub cpi_whitelist: Pubkey,       // Only this program can call cpi_trade
     pub max_cpi_trade_size: u64,     // Max single CPI trade size
+
+    // Timelock (48h delay on manager transfer)
+    pub pending_manager: Pubkey,           // Proposed new manager
+    pub pending_manager_timestamp: i64,    // When transfer was proposed
+
+    // Immutable minimum protection (set at vault creation)
+    pub min_drawdown_bps: u16,      // Floor — manager cannot reduce below this
 }
 ```
 
@@ -47,7 +54,7 @@ pub struct VaultState {
 
 ### Core Vault
 
-**init_vault** — Creates the VaultState PDA.
+**init_vault** — Creates the VaultState PDA. Sets `min_drawdown_bps` — the immutable circuit breaker floor that can never be reduced.
 
 **register_on_percolator** — CPI to Percolator InitUser. The vault PDA becomes the owner of a trading account.
 
@@ -65,14 +72,18 @@ pub struct VaultState {
 
 **collect_fees** — Performance fee (% of profits above HWM) + management fee (% of AUM, pro-rated). Fees paid via share dilution.
 
-**update_manager** — Transfer management to a new keeper.
+**propose_manager** — Propose manager transfer to a new address. Starts a 48-hour timelock.
+
+**execute_manager_transfer** — Execute the transfer after 48h has elapsed. Callable by either current or pending manager.
+
+**cancel_manager_transfer** — Cancel a pending transfer (current manager only).
 
 **set_paused** — Emergency stop for deposits/withdrawals/trades.
 
 ### Security
 
 **set_circuit_breaker** — Configure automatic protection:
-- `max_drawdown_bps`: reject trades when equity drops this much from peak (0 = disabled)
+- `max_drawdown_bps`: reject trades when equity drops this much from peak. **Cannot be set below `min_drawdown_bps`** (immutable floor from init_vault).
 - `cpi_whitelist`: restrict cpi_trade to a specific program (Pubkey::default() = any)
 - `max_cpi_trade_size`: cap per-trade size for CPI callers (0 = default 1M)
 
@@ -102,6 +113,25 @@ Trade request arrives (manager_trade or cpi_trade)
 
 The circuit breaker is **automatic** — no governance vote or manual intervention needed. When equity drops beyond the configured threshold, all trades are rejected until equity recovers.
 
+The `min_drawdown_bps` floor is **immutable** — set at vault creation, cannot be reduced even by the manager. This ensures depositors can verify the minimum protection level before depositing.
+
+### Manager Transfer Timelock
+
+```
+Manager calls propose_manager(new_manager)
+  → pending_manager = new_manager
+  → pending_manager_timestamp = now
+
+Before 48 hours:
+  → execute_manager_transfer → REJECTED (TimelockNotElapsed)
+  → cancel_manager_transfer → OK (clears pending)
+
+After 48 hours:
+  → execute_manager_transfer → OK (manager = new_manager)
+```
+
+This 48-hour delay gives depositors time to withdraw if they detect a hostile manager transfer attempt.
+
 ### CPI Security
 
 Every CPI from Syntx to Percolator uses `invoke_signed` with the vault PDA seeds:
@@ -122,7 +152,7 @@ The vault PDA has no private key — only the vault program can sign for it.
 
 1. **Share price manipulation**: Deposit large amount → trade → withdraw before price settles. Mitigated by Percolator's warmup period but untested at edge cases.
 2. **CPI reentrancy**: A malicious matcher could re-enter Syntx during a TradeCpi flow. Percolator's ABI validation should prevent this but needs verification.
-3. **Circuit breaker bypass**: If peak_equity is never set (manager doesn't call set_circuit_breaker), the drawdown check is skipped. This is by design but should be documented.
+3. **Circuit breaker bypass**: If `min_drawdown_bps` is set to 0 at vault creation, the manager can disable the circuit breaker. Depositors should verify `min_drawdown_bps > 0` before depositing.
 4. **Fee calculation overflow**: Large equity values × large fee percentages × long time periods could overflow. Uses checked math but edge cases need review.
 
 ## Percolator Account Layout Reference
@@ -192,5 +222,5 @@ cargo-build-sbf --tools-version v1.53 -- --manifest-path programs/syntx-vault/Ca
 # Test (requires percolator_prog.so)
 cargo test -p syntx-vault --test integration
 
-# 25 tests: lifecycle, fees, access control, circuit breakers, multi-user
+# 27 tests: lifecycle, fees, access control, circuit breakers, timelock, multi-user
 ```

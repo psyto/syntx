@@ -11,7 +11,7 @@ Syntx is a composable exchange-agnostic vault layer for Solana perps. Vaults rou
 | Phase | Status | What was built |
 |---|---|---|
 | 0. Foundation | Done | Anchor scaffold, Percolator CPI integration |
-| 1. Core Vault | Done | 15 instructions, 25 tests passing |
+| 1. Core Vault | Done | 17 instructions, 27 tests passing |
 | 2. Keeper | Done | Funding rate strategy, running live on devnet |
 | 3. Fees | Done | Performance + management fees via share dilution |
 | 4. SDK + Frontend | Done | TypeScript SDK (complete), 5-page Next.js app |
@@ -22,13 +22,15 @@ Syntx is a composable exchange-agnostic vault layer for Solana perps. Vaults rou
 | 9. VenueRouter | Done | Multi-venue scoring and routing |
 | 10. Frontend Reframe | Done | Exchange-agnostic positioning, vault UX polish, error boundaries |
 | 11. Documentation | Done | README, business plan, CPI examples, CONTRIBUTING.md |
-| 12. Security Audit | **Pending** | ~$50-100K, non-negotiable before mainnet |
-| 13. SNTX Token | **Pending** | Needs legal counsel |
-| 14. Mainnet | **Pending** | After audit |
+| 12. Timelock + Immutable Floor | Done | 48h manager transfer delay, immutable min_drawdown_bps |
+| 13. Security Audit | **Pending** | ~$50-100K, non-negotiable before mainnet |
+| 14. Multisig (Squads) | **Pending** | Post-audit, replace single manager key |
+| 15. SNTX Token | **Pending** | Needs legal counsel |
+| 16. Mainnet | **Pending** | After audit + multisig |
 
 ## What's Built
 
-### Vault Program (15 instructions, 25 tests)
+### Vault Program (17 instructions, 27 tests)
 
 Core vault:
 - init_vault, register_on_percolator, set_percolator_idx
@@ -36,14 +38,15 @@ Core vault:
 
 Manager operations:
 - manager_trade, manager_crank
-- collect_fees, update_manager, set_paused
+- collect_fees, set_paused
+- propose_manager, execute_manager_transfer, cancel_manager_transfer (48h timelock)
 
 Composability:
 - get_share_price (on-chain oracle for lending protocols)
 - cpi_trade (public trading interface for other programs)
 
 Security:
-- set_circuit_breaker (drawdown limit, CPI whitelist, trade size caps)
+- set_circuit_breaker (drawdown limit with immutable floor, CPI whitelist, trade size caps)
 
 ### Venue Adapter Pattern (exchange-agnostic)
 
@@ -52,22 +55,25 @@ Security:
 - PhoenixAdapter — Phoenix V1 spot orderbook via @ellipsis-labs/phoenix-sdk
 - VenueRouter — scores venues by funding rate, liquidity, insurance; routes to best
 
-### Tests (25 passing)
+### Tests (27 passing)
 
-Positive (14):
+Positive (15):
 - Full lifecycle (init → register → deposit → trade → withdraw)
 - Fee collection with performance + management fees
-- Pause/unpause, update manager, share price oracle
+- Pause/unpause, share price oracle
+- Manager transfer with 48h timelock (propose → warp → execute)
+- Cancel manager transfer
 - Multi-user deposit with share price verification
-- Circuit breaker configuration
+- Circuit breaker configuration (above minimum floor)
 - Share price on fresh vault
 - Deposit after unpause cycle
 
-Negative (11):
-- Unauthorized trade, pause, fees, manager update, circuit breaker (5 tests)
+Negative (12):
+- Unauthorized trade, pause, fees, manager proposal, circuit breaker (5 tests)
 - Deposit when paused, deposit over cap, zero deposit (3 tests)
 - Insufficient shares, withdraw over balance (2 tests)
 - Double init rejected (1 test)
+- Circuit breaker below immutable minimum rejected (1 test)
 
 ### Keeper Bot
 - Venue-agnostic: calls VenueAdapter methods, not venue-specific code
@@ -96,7 +102,9 @@ Negative (11):
 
 | Risk | Status | Mitigation |
 |---|---|---|
-| Vault program unaudited | **Critical** | Tests pass but tests != audit. Must audit before mainnet. |
+| Vault program unaudited | **Critical** | 27 tests pass but tests != audit. Must audit before mainnet. |
+| Single manager key (SPOF) | **Mitigated** | 48h timelock on manager transfer, immutable circuit breaker floor. Squads multisig planned post-audit. |
+| Manager disables protections | **Mitigated** | min_drawdown_bps set at vault creation, cannot be reduced — ever. |
 | Composability = vulnerability propagation | Partially addressed | CPI whitelist + size limits reduce surface, don't eliminate it |
 | Keeper single point of failure | Known | Retry logic added, but no redundancy |
 | Oracle centralization (devnet) | Known | Push oracle is devnet-only. Mainnet uses Pyth. |
