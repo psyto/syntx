@@ -2,13 +2,14 @@ import {
   Connection,
   PublicKey,
   Transaction,
-  Keypair,
-  sendAndConfirmTransaction,
 } from "@solana/web3.js";
-import { getAssociatedTokenAddress } from "@solana/spl-token";
-import { VaultState, VaultInfo, VaultHealth } from "./types";
+import {
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+} from "@solana/spl-token";
+import { VaultState, VaultInfo } from "./types";
 import { fetchVaultState } from "./accounts";
-import { createDepositIx, createWithdrawIx, createCollectFeesIx } from "./instructions";
+import { createDepositIx, createWithdrawIx } from "./instructions";
 import { deriveVaultPda, SYNTX_PROGRAM_ID } from "./constants";
 
 /**
@@ -117,22 +118,107 @@ export class SyntxClient {
   }
 
   /**
-   * Build a deposit transaction (does not send).
+   * Derive the Percolator vault ATA from vault state.
    */
-  async buildDepositTx(
-    user: PublicKey,
-    amount: bigint,
-    userCollateral: PublicKey,
-    userShares: PublicKey,
-  ): Promise<Transaction> {
+  private async getPercolatorVaultAta(state: VaultState): Promise<PublicKey> {
+    const [percVaultPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault"), state.percolatorSlab.toBuffer()],
+      state.percolatorProgram,
+    );
+    return getAssociatedTokenAddress(state.collateralMint, percVaultPda, true);
+  }
+
+  /**
+   * Build a deposit transaction. Creates share token ATA if needed.
+   */
+  async buildDepositTx(user: PublicKey, amount: bigint): Promise<Transaction> {
     const state = await this.getVaultState(true);
-    const vaultCollateral = await getAssociatedTokenAddress(
-      state.collateralMint, this.vaultPda, true,
+    const userCollateral = await getAssociatedTokenAddress(state.collateralMint, user);
+    const userShares = await getAssociatedTokenAddress(state.shareMint, user);
+    const vaultCollateral = await getAssociatedTokenAddress(state.collateralMint, this.vaultPda, true);
+    const percVaultAta = await this.getPercolatorVaultAta(state);
+
+    const tx = new Transaction();
+
+    // Create share ATA if it doesn't exist
+    try {
+      await this.connection.getTokenAccountBalance(userShares);
+    } catch {
+      tx.add(createAssociatedTokenAccountInstruction(user, userShares, user, state.shareMint));
+    }
+
+    tx.add(createDepositIx({
+      user,
+      vaultPda: this.vaultPda,
+      userCollateral,
+      userShares,
+      vaultCollateral,
+      shareMint: state.shareMint,
+      percolatorSlab: state.percolatorSlab,
+      percolatorVault: percVaultAta,
+      percolatorProgram: state.percolatorProgram,
+      amount,
+      programId: this.programId,
+    }));
+
+    return tx;
+  }
+
+  /**
+   * Build a withdraw transaction. Creates collateral ATA if needed.
+   * Accepts dollar amount — converts to shares internally.
+   */
+  async buildWithdrawTx(user: PublicKey, sharesToBurn: bigint): Promise<Transaction> {
+    const state = await this.getVaultState(true);
+    const userShares = await getAssociatedTokenAddress(state.shareMint, user);
+    const userCollateral = await getAssociatedTokenAddress(state.collateralMint, user);
+    const vaultCollateral = await getAssociatedTokenAddress(state.collateralMint, this.vaultPda, true);
+    const percVaultAta = await this.getPercolatorVaultAta(state);
+
+    const [percVaultPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault"), state.percolatorSlab.toBuffer()],
+      state.percolatorProgram,
     );
 
-    // Read devnet-vault.json for percolator vault address
-    // For now, caller must provide these
-    throw new Error("Use createDepositIx directly — need percolatorVault address");
+    const tx = new Transaction();
+
+    // Create collateral ATA if it doesn't exist
+    try {
+      await this.connection.getTokenAccountBalance(userCollateral);
+    } catch {
+      tx.add(createAssociatedTokenAccountInstruction(user, userCollateral, user, state.collateralMint));
+    }
+
+    tx.add(createWithdrawIx({
+      user,
+      vaultPda: this.vaultPda,
+      userShares,
+      userCollateral,
+      vaultCollateral,
+      shareMint: state.shareMint,
+      percolatorSlab: state.percolatorSlab,
+      percolatorVault: percVaultAta,
+      percolatorVaultAuthority: percVaultPda,
+      oracle: state.percolatorSlab, // oracle = slab in authority mode
+      percolatorProgram: state.percolatorProgram,
+      sharesToBurn,
+      programId: this.programId,
+    }));
+
+    return tx;
+  }
+
+  /**
+   * Build a withdraw transaction from a dollar amount.
+   * Converts USDC amount to shares based on current share price.
+   */
+  async buildWithdrawByAmountTx(user: PublicKey, usdcAmount: number): Promise<Transaction> {
+    const info = await this.getVaultInfo();
+    const shares = info.sharePrice > 0
+      ? BigInt(Math.floor(usdcAmount * 1_000_000 / info.sharePrice))
+      : 0n;
+    if (shares === 0n) throw new Error("Invalid amount — zero shares");
+    return this.buildWithdrawTx(user, shares);
   }
 
   /**

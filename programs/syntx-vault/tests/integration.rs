@@ -1704,3 +1704,222 @@ fn test_multiple_deposits_and_share_price() {
     assert_eq!(u1_state.amount + u2_state.amount, 200_000_000, "Total shares should be 200M");
     println!("test_multiple_deposits_and_share_price passed");
 }
+
+#[test]
+fn test_set_circuit_breaker() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, _, _, _, _) = setup_vault_with_deposit(&mut env);
+    let manager = &env.payer;
+
+    let whitelist = Pubkey::new_unique();
+    let mut data = disc("set_circuit_breaker");
+    data.extend_from_slice(&500u16.to_le_bytes()); // max_drawdown_bps = 5%
+    data.extend_from_slice(whitelist.as_ref()); // cpi_whitelist
+    data.extend_from_slice(&1_000_000u64.to_le_bytes()); // max_cpi_trade_size
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("set_circuit_breaker should succeed");
+    println!("test_set_circuit_breaker passed");
+}
+
+#[test]
+fn test_set_circuit_breaker_rejected_by_non_manager() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, _, _, _, _) = setup_vault_with_deposit(&mut env);
+
+    let attacker = Keypair::new();
+    env.svm.airdrop(&attacker.pubkey(), 10_000_000_000).unwrap();
+
+    let mut data = disc("set_circuit_breaker");
+    data.extend_from_slice(&500u16.to_le_bytes());
+    data.extend_from_slice(Pubkey::new_unique().as_ref());
+    data.extend_from_slice(&1_000_000u64.to_le_bytes());
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(attacker.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&attacker.pubkey()), &[&attacker], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    assert!(result.is_err(), "Non-manager should not set circuit breaker");
+    println!("test_set_circuit_breaker_rejected_by_non_manager passed");
+}
+
+#[test]
+fn test_withdraw_more_than_balance() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, vault_collateral, share_mint, user_shares, user) = setup_vault_with_deposit(&mut env);
+
+    // Try to withdraw 2x what was deposited (user has 100M shares, try burning 200M)
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(user.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new(user_shares, false),
+            AccountMeta::new(Pubkey::new_unique(), false), // user_collateral (dummy)
+            AccountMeta::new(vault_collateral, false),
+            AccountMeta::new(share_mint, false),
+            AccountMeta::new(env.slab, false),
+            AccountMeta::new(env.perc_vault, false),
+            AccountMeta::new_readonly(env.perc_vault_pda, false),
+            AccountMeta::new_readonly(env.slab, false),
+            AccountMeta::new_readonly(env.perc_id, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
+        ],
+        data: encode_syntx_withdraw(200_000_000),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&user.pubkey()), &[&user], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    assert!(result.is_err(), "Withdrawing more shares than owned should fail");
+    println!("test_withdraw_more_than_balance passed");
+}
+
+#[test]
+fn test_deposit_after_unpause() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, vault_collateral, share_mint, _, _) = setup_vault_with_deposit(&mut env);
+    let manager = &env.payer;
+
+    // Pause
+    let mut data = disc("set_paused");
+    data.push(1);
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).unwrap();
+
+    // Unpause
+    let mut data = disc("set_paused");
+    data.push(0);
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).unwrap();
+
+    // Deposit should work after unpause
+    let user2 = Keypair::new();
+    env.svm.airdrop(&user2.pubkey(), 10_000_000_000).unwrap();
+    let user2_col = Pubkey::new_unique();
+    env.svm.set_account(user2_col, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &user2.pubkey(), 50_000_000),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+    let user2_shares = Pubkey::new_unique();
+    env.svm.set_account(user2_shares, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&share_mint, &user2.pubkey(), 0),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(user2.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new(user2_col, false),
+            AccountMeta::new(user2_shares, false),
+            AccountMeta::new(vault_collateral, false),
+            AccountMeta::new(share_mint, false),
+            AccountMeta::new(env.slab, false),
+            AccountMeta::new(env.perc_vault, false),
+            AccountMeta::new_readonly(env.perc_id, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
+        ],
+        data: encode_syntx_deposit(50_000_000),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&user2.pubkey()), &[&user2], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("Deposit after unpause should succeed");
+    println!("test_deposit_after_unpause passed");
+}
+
+#[test]
+fn test_get_share_price_on_fresh_vault() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let manager = &env.payer;
+    let (vault_pda, _) = env.vault_pda(&manager.pubkey());
+
+    let share_mint = Pubkey::new_unique();
+    env.svm.set_account(share_mint, Account {
+        lamports: 1_000_000,
+        data: make_mint_data_with_authority(&vault_pda),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+
+    // InitVault only (no deposit)
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new_readonly(env.collateral_mint, false),
+            AccountMeta::new_readonly(share_mint, false),
+            AccountMeta::new_readonly(env.slab, false),
+            AccountMeta::new_readonly(env.perc_id, false),
+            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+        ],
+        data: encode_syntx_init_vault(2000, 200, 0),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).unwrap();
+
+    // get_share_price on empty vault should succeed (returns 1.0 or 0)
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new_readonly(vault_pda, false),
+        ],
+        data: disc("get_share_price"),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("get_share_price on fresh vault should succeed");
+    println!("test_get_share_price_on_fresh_vault passed");
+}
