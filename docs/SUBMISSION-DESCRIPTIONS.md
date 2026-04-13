@@ -54,6 +54,22 @@ Anchor (0.30.1), Percolator, Phoenix V1 SDK, Jupiter Perps, Solana Web3.js, SPL 
 
 ---
 
+## Access instructions
+
+1. Switch Phantom wallet to **Devnet** (Settings → Developer Settings → Change Network → Devnet)
+2. Visit **fabrknt.com/vaults**
+3. Connect wallet, click **"Vaults"** in the nav
+4. Click **"Get Test USDC"** — mints 100 test USDC to your wallet
+5. Click a vault (e.g., **SOL Funding Rate**) to expand
+6. Enter an amount and click **Deposit** — approve in Phantom
+7. See your shares appear, toast notification with Explorer link
+8. Try **Withdraw** with a dollar amount — auto-converts to shares
+9. Visit **Compose** to see the architecture diagram and CPI interface
+
+Note: Devnet RPC can be slow. If a page shows an error, click Retry. The faucet is rate-limited to once per 5 minutes per wallet.
+
+---
+
 ## Important GitHub repo context (500 chars)
 
 The repo contains the complete Syntx product: Anchor vault program (15 instructions, 29 tests), keeper with 4 venue adapters (Percolator, Phoenix, Jupiter Perps, VenueRouter) spanning 3 architectures, TypeScript SDK, and Next.js frontend.
