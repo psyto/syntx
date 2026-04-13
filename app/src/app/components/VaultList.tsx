@@ -60,6 +60,8 @@ function deriveVaultName(pubkey: string, slab: string, index: number): { name: s
 
 function parseVaultEntry(pubkey: PublicKey, data: Uint8Array, index: number): VaultEntry | null {
   if (data.length < 200) return null;
+  // Skip old vaults — current program creates 309-byte accounts
+  if (data.length < 300) return null;
   // Verify discriminator
   for (let i = 0; i < 8; i++) {
     if (data[i] !== VAULT_DISC[i]) return null;
