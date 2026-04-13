@@ -70,40 +70,46 @@
 
 ## Pitch Video Script (3 min, for final submission)
 
-### The Shift (30s)
+*Note: Pitch video is the gate — judges decide whether to deep-dive based on this. Lead with market, not tech. Frame as market creation.*
 
-"Perpetual futures did eighty-six trillion dollars in centralized exchange volume last year. Decentralized perps grew three hundred and forty-six percent to six point seven trillion. Real-world asset perps are now forty-four percent of Hyperliquid's volume. This isn't a niche crypto instrument anymore — perps are rewriting global trading."
+### The Market (30s)
 
-"But Solana's Napster era is ending. The infrastructure is world-class. Coinbase and Robinhood are bringing hundreds of millions of users on-chain. The question isn't whether perps will scale — it's who builds the most valuable infrastructure around them as they do."
+"Perpetual futures are an eighty-six trillion dollar market. Decentralized perps grew three hundred and forty-six percent last year to six point seven trillion — and they're still only eight percent of centralized volume. Real-world asset perps are now forty-four percent of Hyperliquid's volume. This market is massive and accelerating."
+
+"On Solana, we now have Percolator, Phoenix, Jupiter Perps, Drift — multiple world-class perp venues. But there's a missing layer."
 
 ### The Problem (20s)
 
-"Every Solana perp venue builds in isolation. Drift vaults only work on Drift. Jupiter vaults only on Jupiter. When a venue goes down, your strategy dies. Strategy managers rebuild identical infrastructure for each DEX. That's the Napster-era approach — fast, fragmented, not built to last."
+"Every vault is locked to one DEX. When Drift was exploited, single-venue vaults lost access overnight. Strategy managers rebuild identical infrastructure for each new venue — deposit logic, share accounting, risk management — all from scratch. There's no shared vault layer across venues."
+
+### Who I Am (15s)
+
+"I'm Hiro. I've been building vaults full-time across Solana and Hyperliquid — Yogi on Drift mainnet, Kodiak on Hyperliquid mainnet. Both live, both profitable. Syntx is the architecture I wished existed while rebuilding the same vault infrastructure on every new DEX."
 
 ### The Solution (30s)
 
-"Syntx is a composable exchange-agnostic vault layer. One vault, any venue. We route trades across Percolator, Phoenix, and Jupiter Perps — three fundamentally different architectures — through a single VenueAdapter interface."
+"Syntx is a composable exchange-agnostic vault layer. A new category — not another DEX, not another vault protocol. The infrastructure layer that sits above all of them."
 
-"The vault is a PDA. No private key. Forty-eight hour timelock on manager transfer. Immutable circuit breaker floor. Other protocols compose via CPI — atomic hedging, leveraged yield, treasury management. This is what post-Napster infrastructure looks like."
+"One VenueAdapter interface. Any DEX plugs in with six methods. Today we route across three fundamentally different architectures — Percolator's slab engine, Phoenix's orderbook, Jupiter's oracle AMM. Same strategy, best execution."
 
-### Who we are (15s)
-
-"I'm Hiro from Fabrknt. I run production vaults on Drift mainnet and Hyperliquid mainnet — Yogi and Kodiak. Twenty-nine published infrastructure packages. Five Percolator matchers. Syntx is the architecture I wished existed while building those."
+"Other protocols compose via CPI. A lending protocol auto-hedges through a vault in one atomic transaction. Vault shares are SPL tokens — usable as collateral across DeFi."
 
 ### Traction (20s)
 
-"Live on devnet. Fifteen Anchor instructions. Twenty-nine tests. Four venue adapters across three architectures. Complete TypeScript SDK. Five frontend pages. Mobile-responsive. CPI examples. Business plan."
+"Live on devnet. Two vaults with deposits. Four venue adapters. Twenty-nine passing tests. Complete SDK and frontend at fabrknt.com/vaults."
 
-"This isn't a prototype — it's a submission-ready product waiting for an audit to unlock mainnet."
+"We studied the Drift exploit and proactively added a forty-eight hour timelock on manager transfers and an immutable circuit breaker floor. Security isn't an afterthought."
 
 ### Business Model (15s)
 
-"In traditional markets, Robinhood commands a higher market cap than Nasdaq — value accrues to the infrastructure layer above exchanges, not the exchanges themselves. Syntx is that layer for Solana perps. Two percent management, twenty percent performance fees — enforced on-chain."
+"In traditional markets, Robinhood commands a higher market cap than Nasdaq. Value accrues to the infrastructure layer above exchanges. Syntx is that layer for Solana perps. Two percent management, twenty percent performance fees — enforced on-chain."
 
-### Ask (15s)
+### The Ask (20s)
 
-"We need audit funding — fifty to a hundred thousand dollars. Fifteen instructions, clean code, twenty-nine tests. An audit unlocks mainnet. We're applying to the Colosseum accelerator for funding and distribution."
+"We need an audit — fifty to a hundred thousand dollars. Fifteen instructions, clean code. An audit unlocks mainnet."
 
-### Close (15s)
+"Colosseum is the right partner because you've already invested in the perps ecosystem — Reflect, the delta-neutral stablecoin, won the Radar grand prize. Syntx is the vault infrastructure that protocols like Reflect need to exist on top of. We're building the layer underneath."
 
-"Solana's infrastructure grew up. It's time for the applications on top to catch up. Syntx is built for the next era — serious vault infrastructure for serious capital. Composable. Exchange-agnostic. Built to last."
+### Close (10s)
+
+"Syntx. Composable exchange-agnostic vaults. A new category for Solana DeFi. Built to last."
