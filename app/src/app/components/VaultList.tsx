@@ -7,8 +7,22 @@ import {
   Transaction,
   TransactionInstruction,
   SystemProgram,
+  Keypair,
+  SYSVAR_CLOCK_PUBKEY,
 } from "@solana/web3.js";
+import {
+  TOKEN_PROGRAM_ID,
+  createInitializeMintInstruction,
+  getMinimumBalanceForRentExemptMint,
+  MINT_SIZE,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+} from "@solana/spl-token";
 import dynamic from "next/dynamic";
+// Anchor discriminators (pre-computed)
+const DISC_INIT_VAULT = new Uint8Array([0x08, 0xca, 0xae, 0x3a, 0xc7, 0x58, 0x18, 0x96]);
+const DISC_REGISTER = new Uint8Array([0x97, 0x2b, 0x92, 0x21, 0x0c, 0xf2, 0xa9, 0x34]);
+const DISC_SET_IDX = new Uint8Array([0xdb, 0x56, 0x4a, 0xe2, 0x4a, 0x96, 0x3b, 0x28]);
 
 const VaultDashboard = dynamic(() => import("./VaultDashboard"), { ssr: false });
 
@@ -232,7 +246,7 @@ function CreateVaultForm({ onCreated }: { onCreated: () => void }) {
   const { publicKey, sendTransaction } = useWallet();
   const [slab, setSlab] = useState("");
   const [percProgram, setPercProgram] = useState("Edq18N2pdT3Sz9EukbZe4YsQkvmxvmmkUL1KHpv96xJF");
-  const [collateralMint, setCollateralMint] = useState("2uGTCDSfisKCTN2Yd8umXiWJzfRpWe8mhZM6WCK2vj8D");
+  const [collateralMint, setCollateralMint] = useState("AhGQVQm7HudP6eWekMDLZiZogwvnMPFGL5owZCHFGquC");
   const [perfFee, setPerfFee] = useState("20");
   const [mgmtFee, setMgmtFee] = useState("2");
   const [status, setStatus] = useState<string | null>(null);

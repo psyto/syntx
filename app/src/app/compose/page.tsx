@@ -25,15 +25,15 @@ interface Recipe {
 const recipes: Recipe[] = [
   {
     id: "swap-deposit",
-    title: "Any Token → Vault",
-    description: "Swap any Solana token into vault collateral via Jupiter, then deposit into a strategy vault. One flow.",
+    title: "One-Click Deposit",
+    description: "Get test USDC from faucet and deposit into a vault — all in one click. On mainnet, this would swap any token via Jupiter first.",
     steps: [
-      "Select token (SOL, BONK, JTO, etc.)",
-      "Jupiter swaps to vault collateral",
-      "Syntx deposits into vault",
-      "Receive share tokens",
+      "Click the button below",
+      "Faucet mints 100 test USDC + SOL for gas",
+      "Syntx deposits 10 USDC into SOL Funding Rate vault",
+      "Receive share tokens (check Earn page)",
     ],
-    protocols: ["Jupiter", "Syntx"],
+    protocols: ["Faucet", "Syntx"],
     status: "live",
   },
   {
