@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import ErrorBoundary from "../components/ErrorBoundary";
 
 const VaultList = dynamic(() => import("../components/VaultList"), { ssr: false });
+const Faucet = dynamic(() => import("../components/Faucet"), { ssr: false });
 
 export default function VaultsPage() {
   return (
@@ -14,6 +15,9 @@ export default function VaultsPage() {
           Browse strategy vaults. Click to view details, deposit, or withdraw.
           Each vault is managed by an independent keeper with its own strategy.
         </p>
+      </div>
+      <div className="mb-6">
+        <Faucet />
       </div>
       <ErrorBoundary>
         <VaultList />
