@@ -14,7 +14,7 @@ import {
 } from "@solana/spl-token";
 
 const RPC_URL = "https://api.devnet.solana.com";
-const COLLATERAL_MINT = "2uGTCDSfisKCTN2Yd8umXiWJzfRpWe8mhZM6WCK2vj8D"; // Vault 1 test USDC
+const COLLATERAL_MINT = "AhGQVQm7HudP6eWekMDLZiZogwvnMPFGL5owZCHFGquC"; // Vault test USDC (updated after program redeploy)
 const FAUCET_AMOUNT = 100_000_000; // 100 test USDC
 
 // Rate limiting: 1 request per wallet per 5 minutes

@@ -46,8 +46,10 @@ interface VaultEntry {
 
 // Derive human-readable vault name from on-chain state
 const KNOWN_SLABS: Record<string, { name: string; venue: string }> = {
-  "J55KavPouZg8ZeWnTY77ZBL2DdQskzKpkFvuTtbUNzYC": { name: "SOL Funding Rate", venue: "Percolator" },
-  "B3SbXLH9YBRLuoMkUXyowrpZjpfQDZ7WZeUUt42pnqDQ": { name: "SOL Delta Neutral", venue: "Percolator" },
+  "9Gh75RYAkN5wD97HtHo6Za6RwPReZSAcgNxtbvYy2jDF": { name: "SOL Funding Rate", venue: "Percolator" },
+  // Legacy slabs (pre-timelock program)
+  "J55KavPouZg8ZeWnTY77ZBL2DdQskzKpkFvuTtbUNzYC": { name: "SOL Funding Rate (v1)", venue: "Percolator" },
+  "B3SbXLH9YBRLuoMkUXyowrpZjpfQDZ7WZeUUt42pnqDQ": { name: "SOL Delta Neutral (v1)", venue: "Percolator" },
 };
 
 function deriveVaultName(pubkey: string, slab: string, index: number): { name: string; venue: string } {
