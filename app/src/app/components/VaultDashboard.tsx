@@ -330,6 +330,25 @@ export default function VaultDashboard({ vaultPda }: { vaultPda: string }) {
         data: data as any,
       }));
 
+      // Simulate first to get better error
+      setTxStatus("Simulating...");
+      try {
+        const { blockhash } = await connection.getLatestBlockhash();
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = publicKey;
+        const sim = await connection.simulateTransaction(tx);
+        if (sim.value.err) {
+          const logs = sim.value.logs || [];
+          setTxError(`Simulation failed:\n${logs.join("\n")}`);
+          setTxStatus(null);
+          showToast("Withdrawal failed", "error");
+          return;
+        }
+      } catch (simErr: any) {
+        // Simulation might fail for unsigned tx — continue to wallet
+        console.log("Simulation skipped:", simErr?.message);
+      }
+
       setTxStatus("Confirm in wallet...");
       const sig = await sendTransaction(tx, connection);
       setTxStatus("Confirming...");
@@ -338,13 +357,11 @@ export default function VaultDashboard({ vaultPda }: { vaultPda: string }) {
       showToast("Withdrawal successful", "success");
       fetchData();
     } catch (e: any) {
-      console.error("Withdraw error:", e);
-      // Try to extract useful error info
-      const logs = e?.logs || e?.transactionLogs || e?.transactionMessage?.compiledInstructions || [];
+      console.error("Withdraw error full:", JSON.stringify(e, Object.getOwnPropertyNames(e)));
+      const logs = e?.logs || e?.transactionLogs || [];
       const logStr = Array.isArray(logs) ? logs.join("\n") : "";
-      const simErr = e?.simulationResponse?.err ? JSON.stringify(e.simulationResponse.err) : "";
-      const msg = logStr || simErr || e?.message || "Unknown error";
-      setTxError(`Withdraw failed: ${msg}`.slice(0, 500));
+      const msg = logStr || e?.message || String(e) || "Unknown error";
+      setTxError(`Withdraw: ${msg}`.slice(0, 800));
       setTxStatus(null);
       showToast("Withdrawal failed", "error");
     }
