@@ -276,10 +276,21 @@ export default function VaultDashboard({ vaultPda }: { vaultPda: string }) {
 
       // Convert dollar amount to shares
       const withdrawUsd = parseFloat(withdrawAmt);
-      const shares = sharePrice > 0
-        ? BigInt(Math.floor(withdrawUsd * 1_000_000 / sharePrice))
-        : 0n;
-      if (shares === 0n) { setTxError("Invalid amount"); setTxStatus(null); return; }
+      if (isNaN(withdrawUsd) || withdrawUsd <= 0) {
+        setTxError("Enter a valid amount"); setTxStatus(null); return;
+      }
+
+      // Use raw share conversion: shares = withdrawUsd * totalShares / totalDeposits
+      let shares: bigint;
+      if (vault.totalShares > 0n && vault.totalDeposits > 0n) {
+        const amountRaw = BigInt(Math.floor(withdrawUsd * 1_000_000));
+        shares = amountRaw * vault.totalShares / vault.totalDeposits;
+      } else {
+        shares = BigInt(Math.floor(withdrawUsd * 1_000_000));
+      }
+
+      if (shares === 0n) { setTxError("Amount too small"); setTxStatus(null); return; }
+      if (shares > userShares) { shares = userShares; } // cap at user's balance
       const userShr = await getAssociatedTokenAddress(shrMint, publicKey);
       const userCol = await getAssociatedTokenAddress(colMint, publicKey);
       const vaultCol = await getAssociatedTokenAddress(colMint, VAULT_PDA, true);
@@ -328,10 +339,12 @@ export default function VaultDashboard({ vaultPda }: { vaultPda: string }) {
       fetchData();
     } catch (e: any) {
       console.error("Withdraw error:", e);
-      const logs = e?.logs || e?.transactionLogs || [];
-      const logStr = logs.length > 0 ? logs.join("\n") : "";
-      const msg = logStr || e?.message || "Unknown error";
-      setTxError(msg.slice(0, 500));
+      // Try to extract useful error info
+      const logs = e?.logs || e?.transactionLogs || e?.transactionMessage?.compiledInstructions || [];
+      const logStr = Array.isArray(logs) ? logs.join("\n") : "";
+      const simErr = e?.simulationResponse?.err ? JSON.stringify(e.simulationResponse.err) : "";
+      const msg = logStr || simErr || e?.message || "Unknown error";
+      setTxError(`Withdraw failed: ${msg}`.slice(0, 500));
       setTxStatus(null);
       showToast("Withdrawal failed", "error");
     }
