@@ -88,11 +88,11 @@
 
 ### The Solution (30s)
 
-"Syntx is a composable exchange-agnostic vault layer. A new category — not another DEX, not another vault protocol. The infrastructure layer that sits above all of them."
+"Syntx is a composable exchange-agnostic vault layer — an ecosystem for developers, not just a product for traders."
 
-"One VenueAdapter interface. Any DEX plugs in with six methods. Today we route across three fundamentally different architectures — Percolator's slab engine, Phoenix's orderbook, Jupiter's oracle AMM. Same strategy, best execution."
+"Hyperliquid is the best perp DEX — six hundred million in fees. But you can't build on top of it. You can't CPI into a Hyperliquid vault. Your position can't be collateral on a lending protocol. It's a product. Syntx is a platform."
 
-"Other protocols compose via CPI. A lending protocol auto-hedges through a vault in one atomic transaction. Vault shares are SPL tokens — usable as collateral across DeFi."
+"Any Solana program calls cpi_trade in one atomic transaction. A lending protocol auto-hedges. A treasury self-manages. Each developer who integrates brings their users into the vault ecosystem. That's distribution through composability — not marketing."
 
 ### Traction (20s)
 

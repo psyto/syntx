@@ -41,11 +41,26 @@ Even 1% of Solana perp TVL at 2% management fee = meaningful revenue at scale.
 ## Competitive Advantage
 
 1. **Exchange-agnostic** — only vault layer that routes across multiple venues. Competitors are venue-locked.
-2. **Infrastructure moat** — 29 published @fabrknt/* packages, 5 Percolator matchers, proven strategy logic
-3. **Battle-tested** — same strategy code runs on Drift mainnet (Yogi) and Hyperliquid mainnet (Kodiak)
-4. **CPI-native** — other protocols compose atomically, not through bridges or oracles
-5. **Formally verified execution** — Percolator's H ratio mathematically prevents insolvency
-6. **Right layer in the stack** — a16z identifies "specialized liquidity provision / cross-venue inventory management" as a key builder category. Syntx is that category.
+2. **Ecosystem, not product** — Hyperliquid built a product for traders. Syntx builds an ecosystem for developers. CPI means any Solana program can compose with Syntx vaults — each integration brings its own users. This is distribution through developer adoption, not marketing.
+3. **Infrastructure moat** — 29 published @fabrknt/* packages, 5 Percolator matchers, proven strategy logic
+4. **Battle-tested** — same strategy code runs on Drift mainnet (Yogi) and Hyperliquid mainnet (Kodiak)
+5. **CPI as distribution** — every developer who calls `cpi_trade` brings their users into the vault ecosystem. Lending protocols, treasury managers, yield aggregators — each is a distribution channel.
+6. **Formally verified execution** — Percolator's H ratio mathematically prevents insolvency
+7. **Right layer in the stack** — a16z identifies "specialized liquidity provision / cross-venue inventory management" as a key builder category. Syntx is that category.
+
+## Product vs Ecosystem
+
+Hyperliquid is the best perp DEX in crypto — $600M+ annualized fees, best execution, best UX. But it's a **product for traders**. The developer surface is thin: deploy a market, trade on it. You can't build on top of a Hyperliquid position.
+
+Syntx is an **ecosystem for developers** on Solana. CPI (Cross-Program Invocation) means any Solana program can call into Syntx vaults in the same transaction:
+
+- A lending protocol calls `cpi_trade` to auto-hedge → its users become Syntx vault users
+- A DAO treasury calls `deposit` to manage idle capital → its members become depositors
+- A yield aggregator routes across Syntx vaults → its TVL flows through Syntx
+
+Each developer integration is a distribution channel. Syntx doesn't need to acquire users directly — developers bring their users when they compose.
+
+This is the structural advantage of building on Solana instead of an appchain. Hyperliquid chose best execution at the cost of composability. Syntx chose composability — and uses exchange-agnostic routing to get the best execution anyway.
 
 ## Go-to-Market
 

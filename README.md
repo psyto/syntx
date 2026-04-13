@@ -66,12 +66,17 @@ Switch venues with one env var: `VENUE=percolator`, `VENUE=phoenix`, `VENUE=jupi
 
 ## Why Composable Matters
 
-| Purpose-built chains (Hyperliquid) | Syntx on Solana |
+Hyperliquid is the best perp DEX — $600M+ fees, best execution. But it's a **product for traders**. You can't build on top of it.
+
+Syntx is an **ecosystem for developers**. CPI means every integration is a distribution channel — developers bring their users when they compose.
+
+| Product (Hyperliquid) | Ecosystem (Syntx on Solana) |
 |---|---|
-| Perp position is isolated | Perp position composes with lending, spot, LSTs |
-| Need bridges for cross-protocol | Atomic in one transaction via CPI |
-| Can't use position as collateral | Vault shares are SPL tokens — usable anywhere |
-| Locked to one venue | VenueRouter picks best execution across DEXes |
+| Best execution, isolated positions | Exchange-agnostic routing across venues |
+| Developers can deploy markets | Developers can build on top of vaults via CPI |
+| Users come to the DEX directly | Users come through every protocol that integrates |
+| Can't use position as collateral | Vault shares are SPL tokens — usable across DeFi |
+| Bridges needed for cross-protocol | Atomic in one transaction |
 
 ## Vault Program (17 Instructions)
 
