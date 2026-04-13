@@ -30,15 +30,15 @@
 
 ## Demo Video Script (2-3 min, for final submission)
 
-### Section 1: Problem (20s)
+### Section 1: The Problem (20s)
 
-"Solana has world-class infrastructure and multiple high-quality perp venues — Phoenix, Jupiter Perps, Percolator, Drift. But every vault is locked to one DEX. When that venue goes down, your strategy dies. There's no shared vault layer. That's a Napster-era problem."
+"I run funding rate vaults on Drift and Hyperliquid — live, profitable. Drift was the only place on Solana where I could compose perps with lending and yield. When Drift was exploited, I lost access to the whole stack overnight. Composable perps can't depend on one protocol."
 
-### Section 2: Solution (30s)
+### Section 2: What Users Get (30s)
 
-"Syntx is a composable exchange-agnostic vault layer. Vaults route trades across any venue through a VenueAdapter interface — Percolator for slab-based perps, Phoenix for CLOB spot, Jupiter Perps for oracle-based AMM perps. Three architectures, same strategy, best execution."
+"Deposit USDC. Earn eight to fifteen percent APY from funding rate yield. That's it."
 
-"The vault is a Program-Derived Address. No private key. A 48-hour timelock prevents instant manager takeover. An immutable circuit breaker floor ensures protections can never be disabled. The VenueRouter scores each DEX by funding rate, liquidity, and cost — then routes to the best one."
+"Underneath, Syntx routes your capital across three completely different DEX architectures — Percolator, Phoenix, Jupiter Perps — and picks whichever has the best funding rate. If one venue goes down, your money routes to the next one. Vault shares are SPL tokens — they work as collateral everywhere on Solana automatically."
 
 ### Section 3: Live Demo (60s)
 
@@ -60,9 +60,9 @@
 
 "This is something no purpose-built chain can offer — and no single-venue vault provides."
 
-### Section 5: Track Record + Close (20s)
+### Section 5: Close (20s)
 
-"This isn't our first vault. Yogi runs live on Drift mainnet. Kodiak runs live on Hyperliquid. Syntx is the architecture we wished existed — exchange-agnostic from day one."
+"I lost my composable perp stack when Drift was exploited. So I built one that can't die with a single venue. Fifteen instructions, twenty-nine tests, four venue adapters, three architectures. Syntx — composable exchange-agnostic vaults on Solana."
 
 "Fifteen instructions. Twenty-nine tests. Four venue adapters across three architectures. 48-hour timelock. Immutable circuit breaker floor. Full SDK. Live on devnet. Syntx — composable exchange-agnostic vaults on Solana."
 

@@ -2,22 +2,24 @@
 
 > **Built for the [Solana Frontier Hackathon](https://www.colosseum.org/frontier) (Apr 6 – May 11, 2026)**
 
-Strategy vaults that route across any perp execution venue — Percolator, Phoenix, Jupiter Perps. One vault, best execution, full CPI composability.
+Deposit USDC. Earn 8-15% APY from funding rate yield. Your capital routes across the best perp venue automatically. If one venue goes down, your yield doesn't stop.
 
 **Live on devnet:** [fabrknt.com/vaults](https://fabrknt.com/vaults)  
 **GitHub:** [github.com/psyto/syntx](https://github.com/psyto/syntx)
 
 ---
 
-## The Problem
+## Why This Exists
 
-Every Solana perp venue builds in isolation. Drift vaults only trade on Drift. Jupiter vaults only trade on Jupiter. Strategy managers rebuild identical infrastructure for each DEX. When a venue goes down, single-venue vaults lose access entirely.
+Drift was the only place on Solana where you could compose perps with lending, spot, and yield strategies in one stack. When Drift was exploited in April 2026, single-venue vaults lost access to their entire composable stack overnight.
 
-Solana now has multiple high-quality perp venues — Phoenix, Jupiter Perps, Percolator, Drift — but no shared vault infrastructure to compose across them.
+Composable perps can't depend on one protocol. The composable layer needs to survive any single venue failing. That's why Syntx exists — a vault layer that routes across every venue, so your strategy never dies with a single DEX.
 
-## What Syntx Does
+## What Users Get
 
-Syntx separates **vault management** from **trade execution**:
+**Deposit USDC → earn yield → withdraw anytime.** The vault keeper harvests funding rates across perp venues. Your shares are SPL tokens — usable as collateral across DeFi automatically.
+
+## How It Works
 
 ```
 Depositors ──→ Syntx Vault (PDA) ──→ VenueRouter ──→ Percolator (perp)
@@ -27,13 +29,12 @@ Depositors ──→ Syntx Vault (PDA) ──→ VenueRouter ──→ Percolato
                Circuit breakers            │
                     │                      └── Scores by: funding rate,
 DeFi Protocols ────CPI────→ cpi_trade          liquidity, cost
-(Kamino, Marginfi)
 ```
 
-1. **Vault managers** create vaults, set fees, run keeper strategies
-2. **Depositors** deposit USDC, receive SPL share tokens (usable as collateral elsewhere)
-3. **VenueRouter** scores each DEX and routes trades to best execution
-4. **Other protocols** compose via CPI — atomic hedging, leveraged yield, treasury management
+1. **Depositors** deposit USDC, earn 8-15% APY from funding rate yield
+2. **VenueRouter** scores each DEX and routes trades to best execution
+3. **Vault shares** are SPL tokens — work as collateral on Kamino, Marginfi, anywhere
+4. **Developers** compose via CPI — any Solana program calls `cpi_trade` in one atomic transaction
 
 ## Exchange-Agnostic Architecture
 
@@ -64,11 +65,11 @@ interface VenueAdapter {
 
 Switch venues with one env var: `VENUE=percolator`, `VENUE=phoenix`, `VENUE=jupiter`, or `VENUE=router` (multi-venue).
 
-## Why Composable Matters
+## Product vs Ecosystem
 
-Hyperliquid is the best perp DEX — $600M+ fees, best execution. But it's a **product for traders**. You can't build on top of it.
+Hyperliquid is the best perp DEX — $600M+ fees, best execution. But it's a **product for traders**. You can't build on top of it. You can't CPI into a Hyperliquid vault. Your position can't be collateral on a lending protocol.
 
-Syntx is an **ecosystem for developers**. CPI means every integration is a distribution channel — developers bring their users when they compose.
+Syntx is an **ecosystem for developers**. If Solana can't compose its perp protocols with the rest of DeFi, it's just a faster Ethereum. The whole point of Solana is that the ecosystem is stronger than any single protocol.
 
 | Product (Hyperliquid) | Ecosystem (Syntx on Solana) |
 |---|---|
@@ -77,6 +78,7 @@ Syntx is an **ecosystem for developers**. CPI means every integration is a distr
 | Users come to the DEX directly | Users come through every protocol that integrates |
 | Can't use position as collateral | Vault shares are SPL tokens — usable across DeFi |
 | Bridges needed for cross-protocol | Atomic in one transaction |
+| One venue goes down = strategy dies | Routes to next venue automatically |
 
 ## Vault Program (17 Instructions)
 

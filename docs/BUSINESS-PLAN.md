@@ -2,7 +2,11 @@
 
 ## Positioning
 
-Syntx is the vault management layer for Solana perps — like Stripe for payments, but for perp execution. Works WITH venues (Phoenix, Percolator, Jupiter Perps), not against them. Strategy managers deploy once, route everywhere.
+Deposit USDC. Earn 8-15% APY from funding rate yield. Your capital routes across the best perp venue automatically.
+
+Syntx is the composable vault layer for Solana perps. It exists because Drift — the only composable perp venue on Solana — was exploited, and everything built on it disappeared overnight. The composable layer needs to survive any single venue failing.
+
+Works WITH venues (Phoenix, Percolator, Jupiter Perps), not against them. An ecosystem for developers, not just a product for traders.
 
 ## Revenue Model
 

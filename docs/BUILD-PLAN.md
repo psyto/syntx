@@ -2,7 +2,9 @@
 
 ## Vision
 
-Syntx is a composable exchange-agnostic vault layer for Solana perps. Vaults route trades across any execution venue — Percolator, Phoenix, Jupiter Perps — through a VenueAdapter interface. Built vault-first for programmatic strategies.
+Drift was the only composable perp venue on Solana. When it was exploited, single-venue vaults lost everything. Syntx exists so that never happens again — a vault layer that routes across every venue, where your yield doesn't stop when one DEX goes down.
+
+Deposit USDC, earn 8-15% APY from funding rate yield. Capital routes across Percolator, Phoenix, Jupiter Perps through a VenueAdapter interface. Vault shares are SPL tokens — composable with all of DeFi.
 
 ## Current Status (April 12, 2026)
 

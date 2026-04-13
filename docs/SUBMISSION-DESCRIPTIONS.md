@@ -8,9 +8,13 @@ Updated for Solana Frontier Hackathon (Apr 6 – May 11, 2026).
 
 Syntx — Composable Exchange-Agnostic Vaults on Solana
 
-Syntx is a developer ecosystem for perp vault infrastructure. Vaults route across any execution venue — Percolator, Phoenix, Jupiter Perps — through a VenueAdapter interface spanning 3 architectures (slab, CLOB, oracle-AMM). Other protocols compose via CPI: each integration is a distribution channel. 48h manager timelock, immutable circuit breaker floor. 15 Anchor instructions, 29 tests, live on devnet.
+Deposit USDC, earn 8-15% APY from funding rate yield. Capital routes across Percolator, Phoenix, and Jupiter Perps — 3 DEX architectures, best execution. If one venue goes down, your yield doesn't stop.
 
-(487 chars)
+Born from frustration: Drift was the only composable perp venue on Solana. When it was exploited, single-venue vaults lost everything. Syntx is the vault layer that survives any single DEX failing.
+
+15 instructions, 29 tests, live on devnet.
+
+(497 chars)
 
 ---
 
@@ -32,15 +36,15 @@ Built for: developers who want composable perp access via CPI, strategy managers
 
 ## Why did you decide to build this, and why build it now? (1000 chars)
 
-Perpetual futures did $86 trillion in CEX volume last year. Decentralized perps grew 346% to $6.7 trillion. In traditional markets, Robinhood commands a higher market cap than Nasdaq — value accrues to the infrastructure layer above exchanges. Syntx is that layer for Solana perps.
+Drift was the only place on Solana where I could compose perps with lending, spot, and yield strategies. I built Yogi there — a funding rate vault, live on mainnet, profitable. When Drift was exploited in April 2026, I lost access to my entire composable stack overnight. Not just positions — the whole infrastructure disappeared.
 
-We built this because we needed it ourselves. Running Yogi on Drift and Kodiak on Hyperliquid, we rebuilt identical vault infrastructure twice. When Drift was exploited, single-venue vaults lost access overnight. The vault layer should be separate from the execution layer.
+That's when I realized: composable perps can't depend on one protocol. I had already rebuilt the same vault infrastructure on Hyperliquid (Kodiak) — deposit logic, share accounting, keeper loops, risk management — all from scratch. Three times building the same thing on three different venues.
 
-Why now: Solana's Napster era is ending. The infrastructure is world-class — multiple perp venues, billions in volume. But every vault is locked to one DEX. Coinbase and Robinhood are bringing hundreds of millions of users on-chain. They need serious infrastructure, not fragmented single-venue tools.
+Why now: Solana has Percolator, Phoenix, Jupiter Perps, and eventually Drift again. For the first time, there are multiple high-quality perp venues. But without a shared vault layer, every strategy manager rebuilds for each DEX, and every vault dies when its single venue goes down.
 
-The window for establishing the standard vault layer is open. Three high-quality venues exist. No one has built the shared infrastructure across them. We have.
+Syntx exists so that never happens again. One vault layer, any venue. Your yield doesn't stop.
 
-(978 chars)
+(985 chars)
 
 ---
 

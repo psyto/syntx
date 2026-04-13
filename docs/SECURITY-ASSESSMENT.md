@@ -2,7 +2,9 @@
 
 ## Context
 
-On April 1, 2026, Drift Protocol was exploited for $285M through multisig governance compromise via durable nonce exploitation. This document assesses whether Syntx has similar vulnerabilities and what mitigations are needed.
+On April 1, 2026, Drift Protocol was exploited for $285M through multisig governance compromise via durable nonce exploitation. Drift was the only place on Solana where perps composed with lending, spot, and yield strategies. When it went down, every vault built on Drift lost access to its entire composable stack.
+
+This event is why Syntx exists — and why we proactively studied the exploit to harden our own design before launch. This document assesses whether Syntx has similar vulnerabilities and what mitigations are implemented.
 
 ## Attack Vector Comparison
 
