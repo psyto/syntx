@@ -109,7 +109,7 @@ export default function VaultList() {
       setLoading(true);
       setError(null);
       const accounts = await connection.getProgramAccounts(SYNTX_PROGRAM_ID, {
-        dataSlice: { offset: 0, length: 260 },
+        dataSlice: { offset: 0, length: 320 },
       });
 
       const parsed: VaultEntry[] = [];
