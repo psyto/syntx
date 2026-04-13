@@ -56,16 +56,17 @@ Anchor (0.30.1), Percolator, Phoenix V1 SDK, Jupiter Perps, Solana Web3.js, SPL 
 
 ## Access instructions
 
-1. Switch Phantom wallet to **Devnet** (Settings → Developer Settings → Change Network → Devnet)
-2. Visit **fabrknt.com/vaults**
-3. Connect wallet — Phantom may show "This dApp could be malicious." This is normal for devnet apps. Click **"Proceed Anyway"** to continue.
-4. Click **"Vaults"** in the nav
-5. Click **"Get Test USDC"** — mints 100 test USDC + 0.05 SOL for gas to your wallet (one click, no setup needed)
-6. Click a vault (e.g., **SOL Funding Rate**) to expand
-7. Enter an amount and click **Deposit** — approve in Phantom
-8. See your shares appear, toast notification with Explorer link
-9. Try **Withdraw** with a dollar amount — auto-converts to shares
-10. Visit **Compose** to see the architecture diagram and CPI interface
+1. Visit **fabrknt.com/vaults**
+2. Click **"Select Wallet"** → choose **Solflare** (recommended) or Phantom
+   - If using Phantom: switch to Devnet in Settings → Developer Settings, and click "Proceed Anyway" on the devnet warning
+   - If using Solflare: select Devnet in network settings — no warnings
+3. Click **"Vaults"** in the nav
+4. Click **"Get Test USDC"** — mints 100 test USDC + 0.05 SOL for gas (one click, no setup needed)
+5. Click a vault (e.g., **SOL Funding Rate**) to expand
+6. Enter an amount and click **Deposit** — approve in wallet
+7. See your shares appear, toast notification with Explorer link
+8. Try **Withdraw** with a dollar amount — auto-converts to shares
+9. Visit **Compose** to see the architecture diagram and CPI interface
 
 Note: Devnet RPC can be slow. If a page shows an error, click Retry. The faucet is rate-limited to once per 5 minutes per wallet.
 

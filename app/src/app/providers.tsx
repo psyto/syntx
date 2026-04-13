@@ -14,13 +14,13 @@ const RPC_URL = "https://api.devnet.solana.com";
 
 export function Providers({ children }: { children: ReactNode }) {
   const wallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
+    () => [new SolflareWalletAdapter(), new PhantomWalletAdapter()],
     [],
   );
 
   return (
     <ConnectionProvider endpoint={RPC_URL}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={wallets} autoConnect={false}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
