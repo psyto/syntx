@@ -4,6 +4,9 @@ import {
   Keypair,
   PublicKey,
   LAMPORTS_PER_SOL,
+  Transaction,
+  SystemProgram,
+  sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import {
   getOrCreateAssociatedTokenAccount,
@@ -65,6 +68,25 @@ export async function POST(req: NextRequest) {
     const connection = new Connection(RPC_URL, "confirmed");
     const mint = new PublicKey(COLLATERAL_MINT);
 
+    // Send 0.05 SOL for gas fees (if user has less than 0.01 SOL)
+    let solSent = false;
+    try {
+      const balance = await connection.getBalance(userPubkey);
+      if (balance < 0.01 * LAMPORTS_PER_SOL) {
+        const tx = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: admin.publicKey,
+            toPubkey: userPubkey,
+            lamports: Math.floor(0.05 * LAMPORTS_PER_SOL),
+          }),
+        );
+        await sendAndConfirmTransaction(connection, tx, [admin]);
+        solSent = true;
+      }
+    } catch {
+      // SOL transfer failed — continue with USDC mint anyway
+    }
+
     // Create or get user's token account
     const ata = await getOrCreateAssociatedTokenAccount(
       connection, admin, mint, userPubkey,
@@ -82,6 +104,7 @@ export async function POST(req: NextRequest) {
       success: true,
       amount: FAUCET_AMOUNT / 1_000_000,
       token: "Test USDC",
+      solSent,
       signature: sig,
       ata: ata.address.toBase58(),
     });

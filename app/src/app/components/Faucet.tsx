@@ -30,7 +30,7 @@ export default function Faucet() {
       }
 
       setStatus("success");
-      setMessage(`Received ${data.amount} test USDC`);
+      setMessage(`Received ${data.amount} test USDC${data.solSent ? " + 0.05 SOL for gas" : ""}`);
 
       // Auto-reset after 10s
       setTimeout(() => { setStatus("idle"); setMessage(""); }, 10000);
@@ -45,7 +45,7 @@ export default function Faucet() {
       <div>
         <div className="text-xs font-mono uppercase tracking-wider text-[var(--text-dim)] mb-1">Devnet Faucet</div>
         <div className="text-sm text-[var(--text-muted)]">
-          {status === "idle" && "Get 100 test USDC to try depositing into vaults"}
+          {status === "idle" && "Get 100 test USDC + devnet SOL to try depositing into vaults"}
           {status === "loading" && message}
           {status === "success" && (
             <span className="text-[var(--green)]">{message}</span>
