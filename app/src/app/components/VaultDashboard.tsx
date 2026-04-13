@@ -255,8 +255,10 @@ export default function VaultDashboard({ vaultPda }: { vaultPda: string }) {
       fetchData();
     } catch (e: any) {
       console.error("Deposit error:", e);
-      const msg = e?.logs?.join("\n") || e?.message || "Failed";
-      setTxError(msg.slice(0, 200));
+      const logs = e?.logs || e?.transactionLogs || [];
+      const logStr = logs.length > 0 ? logs.join("\n") : "";
+      const msg = logStr || e?.message || "Unknown error";
+      setTxError(msg.slice(0, 500));
       setTxStatus(null);
       showToast("Deposit failed", "error");
     }
