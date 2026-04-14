@@ -327,6 +327,17 @@ export default function ComposePage() {
                     <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
                       {selectedVenues.map(v => v.name).join(" + ")}
                     </div>
+                    {(() => {
+                      const typeCounts: Record<string, number> = {};
+                      selectedVenues.forEach(v => { typeCounts[v.type] = (typeCounts[v.type] || 0) + 1; });
+                      const multiples = Object.entries(typeCounts).filter(([, c]) => c > 1);
+                      if (multiples.length > 0) return (
+                        <div className="text-[10px] text-[var(--primary)] mt-1">
+                          VenueRouter picks the best {multiples.map(([t]) => t).join(", ")} venue at each tick
+                        </div>
+                      );
+                      return null;
+                    })()}
                   </div>
 
                   {/* Estimated yield */}
