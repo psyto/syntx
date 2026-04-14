@@ -386,8 +386,6 @@ export default function ComposePage() {
                   { label: "Pre-built vaults", status: "live", detail: "Principal Protected + Funding Rate" },
                   { label: "Custom strategy builder", status: "next", detail: "Pick strategy × venues × params → deploy" },
                   { label: "More venues", status: "next", detail: "Drift, Marginfi, Meteora, Raydium" },
-                  { label: "HIP-4 options", status: "later", detail: "Native options on Hyperliquid → structured products" },
-                  { label: "Cross-chain", status: "later", detail: "Same vault, Solana + Hyperliquid venues" },
                 ].map((item, i) => (
                   <div key={i} className="flex items-start gap-2">
                     <span className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${
