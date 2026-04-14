@@ -59,6 +59,176 @@ pub mod syntx_vault {
         Ok(())
     }
 
+    /// Initialize a standalone vault (no Percolator dependency).
+    /// Vault is immediately ready for deposits — no registration step needed.
+    pub fn init_vault_standalone(
+        ctx: Context<InitVaultStandalone>,
+        performance_fee_bps: u16,
+        management_fee_bps: u16,
+        deposit_cap: u64,
+        min_drawdown_bps: u16,
+    ) -> Result<()> {
+        require!(performance_fee_bps <= 5000, SyntxError::FeeTooHigh);
+        require!(management_fee_bps <= 1000, SyntxError::FeeTooHigh);
+        require!(min_drawdown_bps <= 10_000, SyntxError::FeeTooHigh);
+
+        let vault = &mut ctx.accounts.vault_state;
+        vault.bump = ctx.bumps.vault_state;
+        vault.manager = ctx.accounts.manager.key();
+        vault.collateral_mint = ctx.accounts.collateral_mint.key();
+        vault.share_mint = ctx.accounts.share_mint.key();
+        vault.percolator_program = Pubkey::default();
+        vault.percolator_slab = Pubkey::default();
+        vault.percolator_user_idx = 0;
+        vault.total_shares = 0;
+        vault.total_deposits = 0;
+        vault.performance_fee_bps = performance_fee_bps;
+        vault.management_fee_bps = management_fee_bps;
+        vault.high_water_mark = 0;
+        vault.last_fee_collection = Clock::get()?.unix_timestamp;
+        vault.deposit_cap = deposit_cap;
+        vault.paused = false;
+        vault.initialized = true; // Ready immediately — no Percolator registration needed
+        vault.min_drawdown_bps = min_drawdown_bps;
+        vault.max_drawdown_bps = min_drawdown_bps;
+        vault.standalone = true;
+
+        msg!("Standalone vault created: min_drawdown={}bps", min_drawdown_bps);
+        Ok(())
+    }
+
+    /// Deposit into a standalone vault (no Percolator CPI).
+    /// Transfers collateral from user to vault, mints share tokens.
+    pub fn deposit_standalone(ctx: Context<DepositStandalone>, amount: u64) -> Result<()> {
+        let vault = &ctx.accounts.vault_state;
+        require!(vault.initialized, SyntxError::NotInitialized);
+        require!(vault.standalone, SyntxError::NotStandalone);
+        require!(!vault.paused, SyntxError::VaultPaused);
+        require!(amount > 0, SyntxError::ZeroAmount);
+
+        if vault.deposit_cap > 0 {
+            require!(
+                vault.total_deposits.checked_add(amount).unwrap() <= vault.deposit_cap,
+                SyntxError::DepositCapExceeded
+            );
+        }
+
+        let shares_to_mint = if vault.total_shares == 0 {
+            amount
+        } else {
+            (amount as u128)
+                .checked_mul(vault.total_shares as u128)
+                .unwrap()
+                .checked_div(vault.total_deposits as u128)
+                .unwrap() as u64
+        };
+        require!(shares_to_mint > 0, SyntxError::ZeroShares);
+
+        // Transfer collateral from user to vault
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.user_collateral.to_account_info(),
+                    to: ctx.accounts.vault_collateral.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+
+        // Mint shares to user
+        let mint_seeds: &[&[u8]] = &[
+            b"vault",
+            ctx.accounts.vault_state.collateral_mint.as_ref(),
+            ctx.accounts.vault_state.manager.as_ref(),
+            &[ctx.accounts.vault_state.bump],
+        ];
+
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.share_mint.to_account_info(),
+                    to: ctx.accounts.user_shares.to_account_info(),
+                    authority: ctx.accounts.vault_state.to_account_info(),
+                },
+                &[mint_seeds],
+            ),
+            shares_to_mint,
+        )?;
+
+        let vault = &mut ctx.accounts.vault_state;
+        vault.total_shares = vault.total_shares.checked_add(shares_to_mint).unwrap();
+        vault.total_deposits = vault.total_deposits.checked_add(amount).unwrap();
+
+        if vault.total_deposits > vault.peak_equity {
+            vault.peak_equity = vault.total_deposits;
+        }
+
+        msg!("Standalone deposit: {}, minted {} shares", amount, shares_to_mint);
+        Ok(())
+    }
+
+    /// Withdraw from a standalone vault (no Percolator CPI).
+    /// Burns share tokens, transfers collateral back to user.
+    pub fn withdraw_standalone(ctx: Context<WithdrawStandalone>, shares_to_burn: u64) -> Result<()> {
+        let vault = &ctx.accounts.vault_state;
+        require!(vault.initialized, SyntxError::NotInitialized);
+        require!(vault.standalone, SyntxError::NotStandalone);
+        require!(!vault.paused, SyntxError::VaultPaused);
+        require!(shares_to_burn > 0, SyntxError::ZeroAmount);
+        require!(shares_to_burn <= vault.total_shares, SyntxError::InsufficientShares);
+
+        let withdraw_amount = (shares_to_burn as u128)
+            .checked_mul(vault.total_deposits as u128)
+            .unwrap()
+            .checked_div(vault.total_shares as u128)
+            .unwrap() as u64;
+        require!(withdraw_amount > 0, SyntxError::ZeroAmount);
+
+        // Burn shares
+        token::burn(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                token::Burn {
+                    mint: ctx.accounts.share_mint.to_account_info(),
+                    from: ctx.accounts.user_shares.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            shares_to_burn,
+        )?;
+
+        // Transfer collateral to user
+        let transfer_seeds: &[&[u8]] = &[
+            b"vault",
+            ctx.accounts.vault_state.collateral_mint.as_ref(),
+            ctx.accounts.vault_state.manager.as_ref(),
+            &[ctx.accounts.vault_state.bump],
+        ];
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.vault_collateral.to_account_info(),
+                    to: ctx.accounts.user_collateral.to_account_info(),
+                    authority: ctx.accounts.vault_state.to_account_info(),
+                },
+                &[transfer_seeds],
+            ),
+            withdraw_amount,
+        )?;
+
+        let vault = &mut ctx.accounts.vault_state;
+        vault.total_shares = vault.total_shares.checked_sub(shares_to_burn).unwrap();
+        vault.total_deposits = vault.total_deposits.checked_sub(withdraw_amount).unwrap();
+
+        msg!("Standalone withdraw: {}, burned {} shares", withdraw_amount, shares_to_burn);
+        Ok(())
+    }
+
     /// Register vault on Percolator (step 2).
     /// Calls Percolator InitUser with vault PDA as the owner.
     pub fn register_on_percolator(
@@ -1187,6 +1357,102 @@ pub struct CpiTrade<'info> {
 }
 
 // =============================================================================
+// Standalone account structs (no Percolator dependency)
+// =============================================================================
+
+#[derive(Accounts)]
+pub struct InitVaultStandalone<'info> {
+    #[account(mut)]
+    pub manager: Signer<'info>,
+
+    #[account(
+        init,
+        payer = manager,
+        space = 8 + VaultState::INIT_SPACE,
+        seeds = [b"vault", collateral_mint.key().as_ref(), manager.key().as_ref()],
+        bump,
+    )]
+    pub vault_state: Box<Account<'info, VaultState>>,
+
+    pub collateral_mint: Box<Account<'info, Mint>>,
+
+    /// Share mint — must be pre-created with vault PDA as mint authority
+    pub share_mint: Box<Account<'info, Mint>>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct DepositStandalone<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", vault_state.collateral_mint.as_ref(), vault_state.manager.as_ref()],
+        bump = vault_state.bump,
+    )]
+    pub vault_state: Box<Account<'info, VaultState>>,
+
+    #[account(
+        mut,
+        token::mint = vault_state.collateral_mint,
+        token::authority = user,
+    )]
+    pub user_collateral: Box<Account<'info, TokenAccount>>,
+
+    #[account(mut, token::mint = vault_state.share_mint)]
+    pub user_shares: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        token::mint = vault_state.collateral_mint,
+        token::authority = vault_state,
+    )]
+    pub vault_collateral: Box<Account<'info, TokenAccount>>,
+
+    #[account(mut, address = vault_state.share_mint)]
+    pub share_mint: Box<Account<'info, Mint>>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct WithdrawStandalone<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", vault_state.collateral_mint.as_ref(), vault_state.manager.as_ref()],
+        bump = vault_state.bump,
+    )]
+    pub vault_state: Box<Account<'info, VaultState>>,
+
+    #[account(mut, token::mint = vault_state.share_mint)]
+    pub user_shares: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        token::mint = vault_state.collateral_mint,
+        token::authority = user,
+    )]
+    pub user_collateral: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        token::mint = vault_state.collateral_mint,
+        token::authority = vault_state,
+    )]
+    pub vault_collateral: Box<Account<'info, TokenAccount>>,
+
+    #[account(mut, address = vault_state.share_mint)]
+    pub share_mint: Box<Account<'info, Mint>>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+// =============================================================================
 // State
 // =============================================================================
 
@@ -1237,6 +1503,10 @@ pub struct VaultState {
     // Immutable minimum protection (set at vault creation, cannot be reduced)
     /// Minimum drawdown limit in bps — manager cannot set max_drawdown_bps below this
     pub min_drawdown_bps: u16,
+
+    /// Standalone mode — vault operates without Percolator CPI on deposit/withdraw.
+    /// Used for structured products that route through Kamino/Phoenix instead.
+    pub standalone: bool,
 }
 
 // =============================================================================
@@ -1277,4 +1547,6 @@ pub enum SyntxError {
     TimelockNotElapsed,
     #[msg("Cannot reduce protection below minimum floor")]
     BelowMinimumProtection,
+    #[msg("Instruction requires standalone vault")]
+    NotStandalone,
 }
