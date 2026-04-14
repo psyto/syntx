@@ -24,7 +24,7 @@ function optionalPubkey(key: string): PublicKey | undefined {
   return val ? new PublicKey(val) : undefined;
 }
 
-export type VenueType = "percolator" | "phoenix" | "jupiter" | "router";
+export type VenueType = "percolator" | "phoenix" | "jupiter" | "kamino" | "router";
 
 export interface Config {
   rpcUrl: string;
@@ -47,6 +47,10 @@ export interface Config {
 
   // Jupiter Perps-specific (required when venue=jupiter)
   jupiterMarket?: string; // "SOL", "BTC", or "ETH"
+
+  // Kamino-specific (required when venue=kamino)
+  kaminoMarket?: PublicKey;   // defaults to Main Market
+  kaminoReserve?: PublicKey;  // defaults to USDC mint
 }
 
 export function loadConfig(): Config {
@@ -73,6 +77,11 @@ export function loadConfig(): Config {
 
   if (venue === "jupiter" || venue === "router") {
     config.jupiterMarket = optionalEnv("JUPITER_MARKET") ?? "SOL";
+  }
+
+  if (venue === "kamino" || venue === "router") {
+    config.kaminoMarket = optionalPubkey("KAMINO_MARKET");
+    config.kaminoReserve = optionalPubkey("KAMINO_RESERVE");
   }
 
   return config;

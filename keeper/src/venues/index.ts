@@ -5,4 +5,6 @@ export { PhoenixAdapter } from "./phoenix";
 export type { PhoenixConfig } from "./phoenix";
 export { JupiterPerpsAdapter } from "./jupiter";
 export type { JupiterPerpsConfig } from "./jupiter";
+export { KaminoAdapter } from "./kamino";
+export type { KaminoConfig } from "./kamino";
 export { VenueRouter } from "./router";

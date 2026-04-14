@@ -2,7 +2,7 @@ import { Connection, Keypair } from "@solana/web3.js";
 import { readFileSync } from "fs";
 import { loadConfig } from "./config";
 import { runKeeper } from "./keeper";
-import { VenueAdapter, PercolatorAdapter, PhoenixAdapter, JupiterPerpsAdapter, VenueRouter } from "./venues";
+import { VenueAdapter, PercolatorAdapter, PhoenixAdapter, JupiterPerpsAdapter, KaminoAdapter, VenueRouter } from "./venues";
 
 function loadKeypair(path: string): Keypair {
   const resolved = path.replace("~", process.env.HOME ?? "");
@@ -48,6 +48,15 @@ function createVenue(config: ReturnType<typeof loadConfig>): VenueAdapter {
         market: config.jupiterMarket ?? "SOL",
       });
 
+    case "kamino":
+      return new KaminoAdapter({
+        connection,
+        manager,
+        vaultPda: config.vaultPda,
+        marketAddress: config.kaminoMarket,
+        reserveMint: config.kaminoReserve,
+      });
+
     case "router": {
       const venues: VenueAdapter[] = [];
 
@@ -80,8 +89,18 @@ function createVenue(config: ReturnType<typeof loadConfig>): VenueAdapter {
         }));
       }
 
+      if (config.kaminoMarket) {
+        venues.push(new KaminoAdapter({
+          connection,
+          manager,
+          vaultPda: config.vaultPda,
+          marketAddress: config.kaminoMarket,
+          reserveMint: config.kaminoReserve,
+        }));
+      }
+
       if (venues.length === 0) {
-        throw new Error("Router venue requires at least one venue configured (Percolator and/or Phoenix)");
+        throw new Error("Router venue requires at least one venue configured");
       }
 
       return new VenueRouter(venues);
