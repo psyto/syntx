@@ -90,6 +90,29 @@ function parseVaultState(d: Uint8Array): VaultState {
   return { totalShares, totalDeposits, shareMint, collateralMint, slab, perfFeeBps, mgmtFeeBps };
 }
 
+// --- Portfolio types ---
+
+const VAULT_DISC = new Uint8Array([0xe4, 0xc4, 0x52, 0xa5, 0x62, 0xd2, 0xeb, 0x98]);
+
+const KNOWN_VAULTS: Record<string, string> = {
+  "H2Hvrz4sS4bcBFdD4s1GQ2dWWctfYh35uR2Qqi1H1reH": "SOL Funding Rate",
+  [STRUCTURED_VAULT_PDA]: "Principal Protected SOL",
+};
+
+interface PortfolioPosition {
+  vaultPda: string;
+  name: string;
+  shares: bigint;
+  totalShares: bigint;
+  totalDeposits: bigint;
+  value: number;
+  shareMint: string;
+}
+
+function short(addr: string): string {
+  return addr.slice(0, 4) + "..." + addr.slice(-4);
+}
+
 // --- Component ---
 
 export default function EarnPage() {
@@ -105,6 +128,8 @@ export default function EarnPage() {
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [loading, setLoading] = useState(true);
   const [showHow, setShowHow] = useState(false);
+  const [positions, setPositions] = useState<PortfolioPosition[]>([]);
+  const [totalPortfolioValue, setTotalPortfolioValue] = useState(0);
 
   const kaminoApy = 0.082;
   const hasVault = STRUCTURED_VAULT_PDA.length > 0;
@@ -137,6 +162,44 @@ export default function EarnPage() {
           const colBal = await connection.getTokenAccountBalance(colAta);
           setUserBalance(BigInt(colBal.value.amount));
         } catch { setUserBalance(0n); }
+      }
+      // Fetch portfolio across all vaults
+      if (publicKey) {
+        try {
+          const accounts = await connection.getProgramAccounts(SYNTX_PROGRAM_ID, {
+            dataSlice: { offset: 0, length: 210 },
+          });
+          const found: PortfolioPosition[] = [];
+          for (const { pubkey, account } of accounts) {
+            const d = new Uint8Array(account.data);
+            let match = true;
+            for (let i = 0; i < 8; i++) { if (d[i] !== VAULT_DISC[i]) { match = false; break; } }
+            if (!match) continue;
+
+            let off = 9 + 32 + 32; // disc + bump + manager + collateralMint
+            const shareMint = new PublicKey(d.slice(off, off + 32)).toBase58(); off += 32;
+            off += 32 + 32 + 2; // percolatorProgram + slab + userIdx
+            const totalShares = readU64LE(d, off); off += 8;
+            const totalDeposits = readU64LE(d, off);
+
+            try {
+              const ata = await getAssociatedTokenAddress(new PublicKey(shareMint), publicKey);
+              const bal = await connection.getTokenAccountBalance(ata);
+              const shares = BigInt(bal.value.amount);
+              if (shares > 0n) {
+                const value = totalShares > 0n ? Number(shares * totalDeposits / totalShares) / 1_000_000 : 0;
+                const pda = pubkey.toBase58();
+                found.push({
+                  vaultPda: pda,
+                  name: KNOWN_VAULTS[pda] || `Vault ${short(pda)}`,
+                  shares, totalShares, totalDeposits, value, shareMint,
+                });
+              }
+            } catch { /* no ATA */ }
+          }
+          setPositions(found);
+          setTotalPortfolioValue(found.reduce((s, p) => s + p.value, 0));
+        } catch { /* portfolio fetch failed, non-critical */ }
       }
     } catch (e) { console.error("Fetch error:", e); } finally { setLoading(false); }
   }, [connection, publicKey, hasVault]);
@@ -455,6 +518,47 @@ export default function EarnPage() {
             </div>
           </div>
         </section>
+
+        {/* Your Positions — portfolio across all vaults */}
+        {connected && positions.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold">Your Positions</h2>
+              <span className="text-sm font-semibold">${totalPortfolioValue.toFixed(2)}</span>
+            </div>
+            <div className="space-y-2">
+              {positions.map((p) => {
+                const sharePrice = p.totalShares > 0n ? Number(p.totalDeposits) / Number(p.totalShares) : 1;
+                const pct = p.totalShares > 0n ? (Number(p.shares) / Number(p.totalShares) * 100) : 0;
+                return (
+                  <div key={p.vaultPda} className="panel p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{p.name}</span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-950 text-[var(--green)]">ACTIVE</span>
+                      </div>
+                      <span className="text-sm font-semibold">${p.value.toFixed(2)}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 text-xs">
+                      <div>
+                        <span className="text-[var(--text-muted)]">Shares</span>
+                        <div className="font-mono mt-0.5">{p.shares.toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <span className="text-[var(--text-muted)]">Share Price</span>
+                        <div className="font-mono mt-0.5">${sharePrice.toFixed(6)}</div>
+                      </div>
+                      <div>
+                        <span className="text-[var(--text-muted)]">Ownership</span>
+                        <div className="font-mono mt-0.5">{pct.toFixed(2)}%</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* How it works — collapsible */}
         <section className="pb-6">
