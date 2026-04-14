@@ -30,16 +30,16 @@ export default function Home() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Link
-              href="/vaults"
+              href="/earn"
               className="h-12 px-8 flex items-center justify-center bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-lg font-medium transition"
             >
-              Explore Vaults
+              Start Earning
             </Link>
             <Link
-              href="/create"
+              href="/vaults"
               className="h-12 px-8 flex items-center justify-center bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--border-hover)] rounded-lg font-medium transition"
             >
-              Create Vault
+              Explore Vaults
             </Link>
           </div>
         </div>
