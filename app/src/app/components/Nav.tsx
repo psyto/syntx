@@ -17,6 +17,7 @@ const NAV_LINKS = [
 
 const TOOLBAR_LINKS = [
   { href: "/vaults", label: "Vaults" },
+  { href: "/protect", label: "Protect" },
   { href: "/compose", label: "Compose" },
   { href: "/earn", label: "Earn" },
 ];
