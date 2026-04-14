@@ -2147,3 +2147,156 @@ fn test_cpi_trade_rejected_when_not_whitelisted() {
     assert!(result.is_err(), "cpi_trade should be rejected for non-whitelisted caller");
     println!("test_cpi_trade_rejected_when_not_whitelisted passed");
 }
+
+#[test]
+fn test_withdraw_rejected_when_paused() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, vault_collateral, share_mint, user_shares, user) = setup_vault_with_deposit(&mut env);
+    let manager = &env.payer;
+
+    // Pause the vault
+    let mut data = disc("set_paused");
+    data.push(1);
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).unwrap();
+
+    // Try to withdraw — should fail
+    let user_col = Pubkey::new_unique();
+    env.svm.set_account(user_col, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &user.pubkey(), 0),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(user.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new(user_shares, false),
+            AccountMeta::new(user_col, false),
+            AccountMeta::new(vault_collateral, false),
+            AccountMeta::new(share_mint, false),
+            AccountMeta::new(env.slab, false),
+            AccountMeta::new(env.perc_vault, false),
+            AccountMeta::new_readonly(env.perc_vault_pda, false),
+            AccountMeta::new_readonly(env.slab, false),
+            AccountMeta::new_readonly(env.perc_id, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
+        ],
+        data: encode_syntx_withdraw(50_000_000),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&user.pubkey()), &[&user], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    assert!(result.is_err(), "Withdraw should be rejected when paused");
+    println!("test_withdraw_rejected_when_paused passed");
+}
+
+#[test]
+fn test_trade_rejected_when_paused() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, _, _, _, _) = setup_vault_with_deposit(&mut env);
+    let manager = &env.payer;
+
+    // Pause the vault
+    let mut data = disc("set_paused");
+    data.push(1);
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).unwrap();
+
+    // Try to trade — should fail
+    let lp_owner = Keypair::new();
+    env.svm.airdrop(&lp_owner.pubkey(), 1_000_000_000).unwrap();
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new(lp_owner.pubkey(), true),
+            AccountMeta::new(env.slab, false),
+            AccountMeta::new_readonly(env.pyth_oracle, false),
+            AccountMeta::new_readonly(env.perc_id, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
+        ],
+        data: encode_syntx_manager_trade(0, 1_000_000),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager, &lp_owner], env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(tx);
+    assert!(result.is_err(), "Trade should be rejected when paused");
+    println!("test_trade_rejected_when_paused passed");
+}
+
+#[test]
+fn test_circuit_breaker_state_persisted() {
+    let mut env = TestEnv::new();
+    env.init_percolator_market();
+    let (vault_pda, _, _, _, _) = setup_vault_with_deposit(&mut env);
+    let manager = &env.payer;
+
+    // Set circuit breaker
+    let mut cb_data = disc("set_circuit_breaker");
+    cb_data.extend_from_slice(&500u16.to_le_bytes()); // 5% max drawdown
+    cb_data.extend_from_slice(Pubkey::default().as_ref()); // no whitelist
+    cb_data.extend_from_slice(&2_000_000u64.to_le_bytes()); // max CPI size
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+        ],
+        data: cb_data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager.pubkey()), &[manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).unwrap();
+
+    // Verify circuit breaker state was persisted on-chain
+    let vault_account = env.svm.get_account(&vault_pda).expect("Vault should exist");
+    let d = &vault_account.data;
+
+    // max_drawdown_bps at offset 217 (after paused + initialized)
+    let max_dd = d[217] as u16 | ((d[218] as u16) << 8);
+    assert_eq!(max_dd, 500, "max_drawdown_bps should be 500");
+
+    // peak_equity at offset 219 (u64)
+    let peak_eq = u64::from_le_bytes(d[219..227].try_into().unwrap());
+    assert!(peak_eq > 0, "peak_equity should be set");
+
+    // max_cpi_trade_size at offset 259+32=291 (after cpi_whitelist pubkey)
+    // Actually: 227 + 32(cpi_whitelist) + 8(max_cpi) = at offset 259
+    // cpi_whitelist starts at 227, max_cpi_trade_size at 259
+    let max_cpi = u64::from_le_bytes(d[259..267].try_into().unwrap());
+    assert_eq!(max_cpi, 2_000_000, "max_cpi_trade_size should be 2_000_000");
+
+    println!("test_circuit_breaker_state_persisted passed (drawdown=500, peak_equity={}, max_cpi={})", peak_eq, max_cpi);
+}
