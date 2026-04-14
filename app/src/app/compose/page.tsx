@@ -241,11 +241,12 @@ export default function ComposePage() {
                   return (
                     <button
                       key={v.id}
-                      onClick={() => toggleVenue(v.id)}
+                      onClick={() => isNeeded && toggleVenue(v.id)}
+                      disabled={!isNeeded}
                       className={`panel p-3 text-left transition ${
                         isSelected ? "border-[var(--primary)]/50" :
-                        isNeeded ? "hover:border-[var(--border-hover)]" :
-                        "opacity-40"
+                        isNeeded ? "hover:border-[var(--border-hover)] cursor-pointer" :
+                        "opacity-30 cursor-not-allowed"
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
