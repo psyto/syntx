@@ -39,8 +39,10 @@ const SLAB_LEN = 1_156_800;
 // NOTE: max_accounts in InitMarket must match the binary's MAX_ACCOUNTS
 const MAX_ACCOUNTS = 4096;
 
-// SOL/USD Pyth feed ID (devnet)
-const SOL_USD_FEED_ID = "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d";
+// Hyperp mode: all-zero feed ID = internal pricing (no Pyth oracle needed)
+// This enables withdrawals without posting Pyth price updates.
+// For production, use the SOL/USD Pyth feed: ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d
+const SOL_USD_FEED_ID = "0000000000000000000000000000000000000000000000000000000000000000";
 
 function loadKeypair(filePath: string): Keypair {
   const expanded = filePath.replace("~", process.env.HOME || "");
@@ -87,35 +89,45 @@ function encodeInitMarket(admin: PublicKey, mint: PublicKey, feedId: string): Bu
   buf4.writeUInt32LE(0);
   parts.push(buf4);
 
-  // initial_mark_price_e6 (u64) = 0 for non-Hyperp
-  parts.push(Buffer.alloc(8));
+  // initial_mark_price_e6 (u64) — $138 for hyperp mode, 0 for Pyth mode
+  parts.push(bufU64(138_000_000n));
 
   // Per-market admin limits
-  parts.push(bufU128(100_000_000_000_000_000_000n)); // max_maintenance_fee_per_slot
+  parts.push(bufU128(0n));   // maintenance_fee_per_slot (0 = disabled)
   parts.push(bufU128(10_000_000_000_000_000n));       // max_insurance_floor
 
   // min_oracle_price_cap_e2bps (u64) = 0
   parts.push(Buffer.alloc(8));
 
-  // RiskParams
-  parts.push(bufU64(0n));    // warmup_period_slots
+  // RiskParams (matching encode_init_market_full_v2 from Percolator tests)
+  parts.push(bufU64(0n));    // h_min (warmup_period_slots)
   parts.push(bufU64(500n));  // maintenance_margin_bps
   parts.push(bufU64(1000n)); // initial_margin_bps
-  parts.push(bufU64(10n));   // trading_fee_bps (0.1%)
-  parts.push(bufU64(4096n)); // max_accounts (production)
+  parts.push(bufU64(0n));    // trading_fee_bps
+  parts.push(bufU64(4096n)); // max_accounts
   parts.push(bufU128(0n));   // new_account_fee
   parts.push(bufU128(0n));   // risk_reduction_threshold
-  parts.push(bufU128(0n));   // maintenance_fee_per_slot
+  parts.push(bufU64(0n));    // h_max (must be >= h_min)
+
   parts.push(bufU64(BigInt("18446744073709551615"))); // max_crank_staleness_slots
   parts.push(bufU64(50n));   // liquidation_fee_bps
   parts.push(bufU128(1_000_000_000_000n)); // liquidation_fee_cap
-  parts.push(bufU64(100n));  // liquidation_buffer_bps
+  parts.push(bufU64(100n));  // resolve_price_deviation_bps
   parts.push(bufU128(0n));   // min_liquidation_abs
   parts.push(bufU128(100n)); // min_initial_deposit
   parts.push(bufU128(1n));   // min_nonzero_mm_req
   parts.push(bufU128(2n));   // min_nonzero_im_req
 
-  // Omit extended tail — Percolator uses defaults when rest.is_empty()
+  // Extended tail (required for latest Percolator)
+  parts.push(bufU16(0));     // insurance_withdraw_max_bps
+  parts.push(bufU64(0n));    // insurance_withdraw_cooldown_slots
+  parts.push(bufU64(0n));    // permissionless_resolve_stale_slots
+  parts.push(bufU64(500n));  // funding_horizon_slots
+  parts.push(bufU64(100n));  // funding_k_bps
+  parts.push(bufI64(500n));  // funding_max_premium_bps
+  parts.push(bufI64(5n));    // funding_max_bps_per_slot
+  parts.push(bufU64(0n));    // mark_min_fee
+  parts.push(bufU64(0n));    // force_close_delay_slots
 
   return Buffer.concat(parts);
 }
@@ -209,6 +221,7 @@ async function main() {
     data: encodeInitMarket(admin.publicKey, collateralMint, SOL_USD_FEED_ID),
   });
 
+  console.log("InitMarket data size:", initMarketIx.data.length, "bytes");
   try {
     const tx2 = new Transaction().add(initMarketIx);
     const sig2 = await sendAndConfirmTransaction(connection, tx2, [admin]);

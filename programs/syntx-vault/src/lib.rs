@@ -328,8 +328,8 @@ pub mod syntx_vault {
         let ix = solana_program::instruction::Instruction {
             program_id: vault.percolator_program,
             accounts: vec![
-                // [0] user = vault PDA (signer, writable — Percolator requires writable)
-                solana_program::instruction::AccountMeta::new(
+                // [0] user = vault PDA (signer, read-only — Percolator only reads owner check)
+                solana_program::instruction::AccountMeta::new_readonly(
                     ctx.accounts.vault_state.key(), true,
                 ),
                 // [1] slab (writable)

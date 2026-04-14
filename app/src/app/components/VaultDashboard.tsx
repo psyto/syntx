@@ -266,8 +266,14 @@ export default function VaultDashboard({ vaultPda }: { vaultPda: string }) {
 
   const handleWithdraw = async () => {
     if (!withdrawAmt || !publicKey) return;
-    setTxStatus("Building..."); setTxError(null);
+    setTxStatus("Refreshing oracle..."); setTxError(null);
     try {
+      // Push oracle price first (required for Percolator withdrawal)
+      try {
+        await fetch("/vaults/api/push-oracle", { method: "POST" });
+      } catch { /* continue even if oracle push fails */ }
+
+      setTxStatus("Building...");
       if (!vault) return;
       const colMint = new PublicKey(vault.collateralMint);
       const shrMint = new PublicKey(vault.shareMint);
