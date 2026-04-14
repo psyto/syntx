@@ -6,7 +6,6 @@ import {
   PublicKey,
   Transaction,
   TransactionInstruction,
-  SYSVAR_CLOCK_PUBKEY,
 } from "@solana/web3.js";
 import {
   getAssociatedTokenAddress,
@@ -23,25 +22,67 @@ const WalletMultiButton = dynamic(
 // --- Constants ---
 
 const SYNTX_PROGRAM_ID = new PublicKey("53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V");
-const PERCOLATOR_PROGRAM_ID = new PublicKey("Edq18N2pdT3Sz9EukbZe4YsQkvmxvmmkUL1KHpv96xJF");
 
-// Percolator-backed vault instructions
-const DISC_DEPOSIT = new Uint8Array([0xf2, 0x23, 0xc6, 0x89, 0x52, 0xe1, 0xf2, 0xb6]);
-const DISC_WITHDRAW = new Uint8Array([0xb7, 0x12, 0x46, 0x9c, 0x94, 0x6d, 0xa1, 0x22]);
-
-// Standalone vault instructions (no Percolator)
 const DISC_DEPOSIT_STANDALONE = new Uint8Array([0x0a, 0xce, 0x85, 0xf6, 0x6b, 0x32, 0x04, 0x37]);
 const DISC_WITHDRAW_STANDALONE = new Uint8Array([0x56, 0x65, 0x25, 0x31, 0x99, 0x49, 0x1e, 0xf3]);
 
-const STRUCTURED_VAULT_PDA = process.env.NEXT_PUBLIC_STRUCTURED_VAULT_PDA || "";
-const STRUCTURED_COLLATERAL_MINT = process.env.NEXT_PUBLIC_STRUCTURED_COLLATERAL_MINT || "";
-const STRUCTURED_SHARE_MINT = process.env.NEXT_PUBLIC_STRUCTURED_SHARE_MINT || "";
-const STRUCTURED_STANDALONE = process.env.NEXT_PUBLIC_STRUCTURED_STANDALONE === "true";
-const STRUCTURED_SLAB = process.env.NEXT_PUBLIC_STRUCTURED_SLAB || "";
+// --- Vault configs ---
 
-const PROTECTION_HORIZON_DAYS = 30;
-const MIN_LENDING_PCT = 85;
-const MAX_SPOT_PCT = 15;
+interface VaultConfig {
+  id: string;
+  name: string;
+  badge: string;
+  badgeColor: string;
+  heading: string;
+  headingSub: string;
+  description: string;
+  vaultPda: string;
+  collateralMint: string;
+  shareMint: string;
+  stats: { value: string; label: string; color?: string }[];
+  allocationBar?: { left: string; leftPct: number; right: string; rightPct: number };
+  feesLabel: string;
+}
+
+const VAULTS: VaultConfig[] = [
+  {
+    id: "protected",
+    name: "Principal Protected SOL",
+    badge: "Principal Protected",
+    badgeColor: "var(--green)",
+    heading: "SOL Exposure",
+    headingSub: "Without the Downside",
+    description: "Deposit USDC. Kamino yield protects your principal while delta hedging captures SOL upside. After 30 days, you get back at least what you put in.",
+    vaultPda: process.env.NEXT_PUBLIC_STRUCTURED_VAULT_PDA || "",
+    collateralMint: process.env.NEXT_PUBLIC_STRUCTURED_COLLATERAL_MINT || "AhGQVQm7HudP6eWekMDLZiZogwvnMPFGL5owZCHFGquC",
+    shareMint: process.env.NEXT_PUBLIC_STRUCTURED_SHARE_MINT || "",
+    stats: [
+      { value: "8.2%", label: "Kamino APY", color: "var(--green)" },
+      { value: "6.8%", label: "SOL Exposure", color: "var(--primary)" },
+      { value: "30d", label: "Protection" },
+    ],
+    allocationBar: { left: "Kamino 93.2%", leftPct: 93.2, right: "SOL 6.8%", rightPct: 6.8 },
+    feesLabel: "10% perf / 1% mgmt",
+  },
+  {
+    id: "funding",
+    name: "SOL Funding Rate",
+    badge: "Yield",
+    badgeColor: "var(--primary)",
+    heading: "Earn From Every",
+    headingSub: "Funding Tick",
+    description: "Deposit USDC. The keeper positions your capital to collect perpetual funding rate payments across any venue.",
+    vaultPda: "HYicfqAdnPFhzYKFJTVkSSBp8nFwQCqj64MvYKzSJPVw",
+    collateralMint: "AhGQVQm7HudP6eWekMDLZiZogwvnMPFGL5owZCHFGquC",
+    shareMint: "3Ttd7cshwdf9adCZahSTe4eD5iirkcnZS6kjvxJC7toT",
+    stats: [
+      { value: "+12", label: "bps/slot Funding", color: "var(--green)" },
+      { value: "50%", label: "Max Deploy", color: "var(--primary)" },
+      { value: "5%", label: "Circuit Breaker" },
+    ],
+    feesLabel: "20% perf / 2% mgmt",
+  },
+];
 
 // --- Helpers ---
 
@@ -54,32 +95,15 @@ function readU64LE(d: Uint8Array, off: number): bigint {
   return lo | (hi << 32n);
 }
 
-function pctFmt(n: number): string {
-  return `${n.toFixed(1)}%`;
+function short(addr: string): string {
+  return addr.slice(0, 4) + "..." + addr.slice(-4);
 }
-
-function computeAllocation(supplyApy: number) {
-  const horizonYears = PROTECTION_HORIZON_DAYS / 365;
-  const growthFactor = 1 + supplyApy * horizonYears;
-  let lendingPct = (1 / growthFactor) * 100;
-  let spotPct = 100 - lendingPct;
-  lendingPct = Math.max(lendingPct, MIN_LENDING_PCT);
-  spotPct = Math.min(spotPct, MAX_SPOT_PCT);
-  spotPct = Math.max(spotPct, 0);
-  lendingPct = 100 - spotPct;
-  return { lendingPct, spotPct };
-}
-
-// --- Vault state parsing ---
 
 interface VaultState {
   totalShares: bigint;
   totalDeposits: bigint;
   shareMint: string;
   collateralMint: string;
-  slab: string;
-  perfFeeBps: number;
-  mgmtFeeBps: number;
 }
 
 function parseVaultState(d: Uint8Array): VaultState {
@@ -87,25 +111,16 @@ function parseVaultState(d: Uint8Array): VaultState {
   off += 32; // manager
   const collateralMint = new PublicKey(d.slice(off, off + 32)).toBase58(); off += 32;
   const shareMint = new PublicKey(d.slice(off, off + 32)).toBase58(); off += 32;
-  off += 32; // percolatorProgram
-  const slab = new PublicKey(d.slice(off, off + 32)).toBase58(); off += 32;
-  off += 2; // userIdx
+  off += 32 + 32 + 2; // percolatorProgram + slab + userIdx
   const totalShares = readU64LE(d, off); off += 8;
-  const totalDeposits = readU64LE(d, off); off += 8;
-  const perfFeeBps = readU16LE(d, off); off += 2;
-  const mgmtFeeBps = readU16LE(d, off);
-  return { totalShares, totalDeposits, shareMint, collateralMint, slab, perfFeeBps, mgmtFeeBps };
+  const totalDeposits = readU64LE(d, off);
+  return { totalShares, totalDeposits, shareMint, collateralMint };
 }
 
-// --- Portfolio types ---
-
+// Portfolio
 const VAULT_DISC = new Uint8Array([0xe4, 0xc4, 0x52, 0xa5, 0x62, 0xd2, 0xeb, 0x98]);
-
-const KNOWN_VAULTS: Record<string, string> = {
-  "H2Hvrz4sS4bcBFdD4s1GQ2dWWctfYh35uR2Qqi1H1reH": "SOL Funding Rate (v1)",
-  "HYicfqAdnPFhzYKFJTVkSSBp8nFwQCqj64MvYKzSJPVw": "SOL Funding Rate",
-  [STRUCTURED_VAULT_PDA]: "Principal Protected SOL",
-};
+const KNOWN_NAMES: Record<string, string> = {};
+VAULTS.forEach(v => { if (v.vaultPda) KNOWN_NAMES[v.vaultPda] = v.name; });
 
 interface PortfolioPosition {
   vaultPda: string;
@@ -114,11 +129,6 @@ interface PortfolioPosition {
   totalShares: bigint;
   totalDeposits: bigint;
   value: number;
-  shareMint: string;
-}
-
-function short(addr: string): string {
-  return addr.slice(0, 4) + "..." + addr.slice(-4);
 }
 
 // --- Component ---
@@ -126,6 +136,8 @@ function short(addr: string): string {
 export default function EarnPage() {
   const { connection } = useConnection();
   const { publicKey, sendTransaction, connected } = useWallet();
+
+  const [activeTab, setActiveTab] = useState(0);
   const [vault, setVault] = useState<VaultState | null>(null);
   const [userShares, setUserShares] = useState<bigint>(0n);
   const [userBalance, setUserBalance] = useState<bigint>(0n);
@@ -135,14 +147,13 @@ export default function EarnPage() {
   const [txError, setTxError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showHow, setShowHow] = useState(false);
   const [faucetStatus, setFaucetStatus] = useState<string | null>(null);
   const [positions, setPositions] = useState<PortfolioPosition[]>([]);
   const [totalPortfolioValue, setTotalPortfolioValue] = useState(0);
+  const [showHow, setShowHow] = useState(false);
 
-  const kaminoApy = 0.082;
-  const hasVault = STRUCTURED_VAULT_PDA.length > 0;
-  const alloc = computeAllocation(kaminoApy);
+  const activeVault = VAULTS[activeTab];
+  const hasVault = activeVault.vaultPda.length > 0;
 
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
@@ -153,7 +164,7 @@ export default function EarnPage() {
     if (!hasVault) { setLoading(false); return; }
     try {
       setLoading(true);
-      const vaultPda = new PublicKey(STRUCTURED_VAULT_PDA);
+      const vaultPda = new PublicKey(activeVault.vaultPda);
       const info = await connection.getAccountInfo(vaultPda);
       if (!info) { setLoading(false); return; }
       const data = parseVaultState(new Uint8Array(info.data));
@@ -162,11 +173,9 @@ export default function EarnPage() {
       if (publicKey && data.shareMint) {
         try {
           const ata = await getAssociatedTokenAddress(new PublicKey(data.shareMint), publicKey);
-          console.log("[earn] share ATA:", ata.toBase58(), "for mint:", data.shareMint, "user:", publicKey.toBase58());
           const bal = await connection.getTokenAccountBalance(ata);
-          console.log("[earn] shares:", bal.value.amount);
           setUserShares(BigInt(bal.value.amount));
-        } catch (e) { console.error("[earn] share balance error:", e); setUserShares(0n); }
+        } catch { setUserShares(0n); }
 
         try {
           const colAta = await getAssociatedTokenAddress(new PublicKey(data.collateralMint), publicKey);
@@ -174,7 +183,8 @@ export default function EarnPage() {
           setUserBalance(BigInt(colBal.value.amount));
         } catch { setUserBalance(0n); }
       }
-      // Fetch portfolio across all vaults
+
+      // Portfolio across all vaults
       if (publicKey) {
         try {
           const accounts = await connection.getProgramAccounts(SYNTX_PROGRAM_ID, {
@@ -187,9 +197,9 @@ export default function EarnPage() {
             for (let i = 0; i < 8; i++) { if (d[i] !== VAULT_DISC[i]) { match = false; break; } }
             if (!match) continue;
 
-            let off = 9 + 32 + 32; // disc + bump + manager + collateralMint
+            let off = 9 + 32 + 32;
             const shareMint = new PublicKey(d.slice(off, off + 32)).toBase58(); off += 32;
-            off += 32 + 32 + 2; // percolatorProgram + slab + userIdx
+            off += 32 + 32 + 2;
             const totalShares = readU64LE(d, off); off += 8;
             const totalDeposits = readU64LE(d, off);
 
@@ -202,18 +212,18 @@ export default function EarnPage() {
                 const pda = pubkey.toBase58();
                 found.push({
                   vaultPda: pda,
-                  name: KNOWN_VAULTS[pda] || `Vault ${short(pda)}`,
-                  shares, totalShares, totalDeposits, value, shareMint,
+                  name: KNOWN_NAMES[pda] || `Vault ${short(pda)}`,
+                  shares, totalShares, totalDeposits, value,
                 });
               }
             } catch { /* no ATA */ }
           }
           setPositions(found);
           setTotalPortfolioValue(found.reduce((s, p) => s + p.value, 0));
-        } catch { /* portfolio fetch failed, non-critical */ }
+        } catch { /* non-critical */ }
       }
     } catch (e) { console.error("Fetch error:", e); } finally { setLoading(false); }
-  }, [connection, publicKey, hasVault]);
+  }, [connection, publicKey, activeVault.vaultPda, hasVault]);
 
   useEffect(() => {
     fetchData();
@@ -221,18 +231,23 @@ export default function EarnPage() {
     return () => clearInterval(i);
   }, [fetchData]);
 
+  // Reset form when switching tabs
+  useEffect(() => {
+    setDepositAmt(""); setWithdrawAmt(""); setTxError(null); setTxStatus(null);
+    setUserShares(0n); setVault(null);
+  }, [activeTab]);
+
   const tvl = vault ? Number(vault.totalDeposits) / 1_000_000 : 0;
   const userValue = vault && vault.totalShares > 0n
     ? Number(userShares * vault.totalDeposits / vault.totalShares) / 1_000_000 : 0;
-  const minYield = kaminoApy * alloc.lendingPct / 100;
 
   const handleDeposit = async () => {
     if (!depositAmt || !publicKey || !hasVault) return;
     setTxStatus("Building..."); setTxError(null);
     try {
-      const vaultPda = new PublicKey(STRUCTURED_VAULT_PDA);
-      const colMint = new PublicKey(STRUCTURED_COLLATERAL_MINT);
-      const shrMint = new PublicKey(STRUCTURED_SHARE_MINT);
+      const vaultPda = new PublicKey(activeVault.vaultPda);
+      const colMint = new PublicKey(activeVault.collateralMint);
+      const shrMint = new PublicKey(activeVault.shareMint);
 
       const amount = BigInt(Math.floor(parseFloat(depositAmt) * 1_000_000));
       const userCol = await getAssociatedTokenAddress(colMint, publicKey);
@@ -245,50 +260,22 @@ export default function EarnPage() {
       }
 
       const data = new Uint8Array(16);
+      data.set(DISC_DEPOSIT_STANDALONE, 0);
       new DataView(data.buffer).setBigUint64(8, amount, true);
 
-      if (STRUCTURED_STANDALONE) {
-        // Standalone: no Percolator accounts needed
-        data.set(DISC_DEPOSIT_STANDALONE, 0);
-        tx.add(new TransactionInstruction({
-          programId: SYNTX_PROGRAM_ID,
-          keys: [
-            { pubkey: publicKey, isSigner: true, isWritable: true },
-            { pubkey: vaultPda, isSigner: false, isWritable: true },
-            { pubkey: userCol, isSigner: false, isWritable: true },
-            { pubkey: userShr, isSigner: false, isWritable: true },
-            { pubkey: vaultCol, isSigner: false, isWritable: true },
-            { pubkey: shrMint, isSigner: false, isWritable: true },
-            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          ],
-          data: data as any,
-        }));
-      } else {
-        // Percolator-backed vault
-        const slabPk = new PublicKey(STRUCTURED_SLAB);
-        data.set(DISC_DEPOSIT, 0);
-        const [percVaultPda] = PublicKey.findProgramAddressSync(
-          [Buffer.from("vault"), slabPk.toBuffer()], PERCOLATOR_PROGRAM_ID,
-        );
-        const percVaultAta = await getAssociatedTokenAddress(colMint, percVaultPda, true);
-        tx.add(new TransactionInstruction({
-          programId: SYNTX_PROGRAM_ID,
-          keys: [
-            { pubkey: publicKey, isSigner: true, isWritable: true },
-            { pubkey: vaultPda, isSigner: false, isWritable: true },
-            { pubkey: userCol, isSigner: false, isWritable: true },
-            { pubkey: userShr, isSigner: false, isWritable: true },
-            { pubkey: vaultCol, isSigner: false, isWritable: true },
-            { pubkey: shrMint, isSigner: false, isWritable: true },
-            { pubkey: slabPk, isSigner: false, isWritable: true },
-            { pubkey: percVaultAta, isSigner: false, isWritable: true },
-            { pubkey: PERCOLATOR_PROGRAM_ID, isSigner: false, isWritable: false },
-            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-            { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
-          ],
-          data: data as any,
-        }));
-      }
+      tx.add(new TransactionInstruction({
+        programId: SYNTX_PROGRAM_ID,
+        keys: [
+          { pubkey: publicKey, isSigner: true, isWritable: true },
+          { pubkey: vaultPda, isSigner: false, isWritable: true },
+          { pubkey: userCol, isSigner: false, isWritable: true },
+          { pubkey: userShr, isSigner: false, isWritable: true },
+          { pubkey: vaultCol, isSigner: false, isWritable: true },
+          { pubkey: shrMint, isSigner: false, isWritable: true },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        ],
+        data: data as any,
+      }));
 
       setTxStatus("Confirm in wallet...");
       const sig = await sendTransaction(tx, connection);
@@ -300,7 +287,6 @@ export default function EarnPage() {
     } catch (e: any) {
       console.error("Deposit error:", e);
       const logs = e?.logs || e?.transactionLogs || [];
-      if (logs.length > 0) console.error("TX Logs:", logs.join("\n"));
       const msg = logs.length > 0 ? logs.join(" | ") : (e?.message || "Transaction failed");
       setTxError(msg.slice(0, 500));
       setTxStatus(null);
@@ -310,19 +296,11 @@ export default function EarnPage() {
 
   const handleWithdraw = async () => {
     if (!withdrawAmt || !publicKey || !hasVault || !vault) return;
-    setTxError(null);
-
-    // Standalone vaults don't need oracle refresh
-    if (!STRUCTURED_STANDALONE) {
-      setTxStatus("Refreshing oracle...");
-      try { await fetch("/vaults/api/push-oracle", { method: "POST" }); } catch {}
-    }
-
-    setTxStatus("Building...");
+    setTxStatus("Building..."); setTxError(null);
     try {
-      const vaultPda = new PublicKey(STRUCTURED_VAULT_PDA);
-      const colMint = new PublicKey(STRUCTURED_COLLATERAL_MINT);
-      const shrMint = new PublicKey(STRUCTURED_SHARE_MINT);
+      const vaultPda = new PublicKey(activeVault.vaultPda);
+      const colMint = new PublicKey(activeVault.collateralMint);
+      const shrMint = new PublicKey(activeVault.shareMint);
 
       const withdrawUsd = parseFloat(withdrawAmt);
       let shares: bigint;
@@ -339,50 +317,22 @@ export default function EarnPage() {
       const vaultCol = await getAssociatedTokenAddress(colMint, vaultPda, true);
 
       const data = new Uint8Array(16);
+      data.set(DISC_WITHDRAW_STANDALONE, 0);
       new DataView(data.buffer).setBigUint64(8, shares, true);
 
-      const tx = new Transaction();
-
-      if (STRUCTURED_STANDALONE) {
-        data.set(DISC_WITHDRAW_STANDALONE, 0);
-        tx.add(new TransactionInstruction({
-          programId: SYNTX_PROGRAM_ID,
-          keys: [
-            { pubkey: publicKey, isSigner: true, isWritable: true },
-            { pubkey: vaultPda, isSigner: false, isWritable: true },
-            { pubkey: userShr, isSigner: false, isWritable: true },
-            { pubkey: userCol, isSigner: false, isWritable: true },
-            { pubkey: vaultCol, isSigner: false, isWritable: true },
-            { pubkey: shrMint, isSigner: false, isWritable: true },
-            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          ],
-          data: data as any,
-        }));
-      } else {
-        const slabPk = new PublicKey(STRUCTURED_SLAB);
-        data.set(DISC_WITHDRAW, 0);
-        const [percVaultPda] = PublicKey.findProgramAddressSync(
-          [Buffer.from("vault"), slabPk.toBuffer()], PERCOLATOR_PROGRAM_ID,
-        );
-        const percVaultAta = await getAssociatedTokenAddress(colMint, percVaultPda, true);
-        tx.add(new TransactionInstruction({
-          programId: SYNTX_PROGRAM_ID,
-          keys: [
-            { pubkey: publicKey, isSigner: true, isWritable: true },
-            { pubkey: vaultPda, isSigner: false, isWritable: true },
-            { pubkey: userCol, isSigner: false, isWritable: true },
-            { pubkey: userShr, isSigner: false, isWritable: true },
-            { pubkey: vaultCol, isSigner: false, isWritable: true },
-            { pubkey: shrMint, isSigner: false, isWritable: true },
-            { pubkey: slabPk, isSigner: false, isWritable: true },
-            { pubkey: percVaultAta, isSigner: false, isWritable: true },
-            { pubkey: PERCOLATOR_PROGRAM_ID, isSigner: false, isWritable: false },
-            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-            { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
-          ],
-          data: data as any,
-        }));
-      }
+      const tx = new Transaction().add(new TransactionInstruction({
+        programId: SYNTX_PROGRAM_ID,
+        keys: [
+          { pubkey: publicKey, isSigner: true, isWritable: true },
+          { pubkey: vaultPda, isSigner: false, isWritable: true },
+          { pubkey: userShr, isSigner: false, isWritable: true },
+          { pubkey: userCol, isSigner: false, isWritable: true },
+          { pubkey: vaultCol, isSigner: false, isWritable: true },
+          { pubkey: shrMint, isSigner: false, isWritable: true },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        ],
+        data: data as any,
+      }));
 
       setTxStatus("Confirm in wallet...");
       const sig = await sendTransaction(tx, connection);
@@ -409,40 +359,58 @@ export default function EarnPage() {
         </div>
       )}
 
-      {/* Hero + Deposit — above the fold */}
+      {/* Tabs */}
+      <div className="border-b border-[var(--border)] bg-[var(--bg-panel)]">
+        <div className="max-w-[1100px] mx-auto px-6 flex gap-1">
+          {VAULTS.map((v, i) => (
+            <button
+              key={v.id}
+              onClick={() => setActiveTab(i)}
+              className={`px-4 py-3 text-sm transition-colors ${
+                activeTab === i
+                  ? "text-[var(--text)] border-b-2 border-[var(--primary)]"
+                  : "text-[var(--text-muted)] hover:text-[var(--text)]"
+              }`}
+            >
+              {v.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Hero + Deposit */}
       <section className="grid-bg border-b border-[var(--border)]">
         <div className="max-w-[1100px] mx-auto px-6 py-12 md:py-16">
           <div className="grid md:grid-cols-2 gap-8 items-start">
 
             {/* Left: Value prop + stats */}
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--green)]/10 border border-[var(--green)]/20 text-[var(--green)] text-xs font-medium mb-4">
-                Principal Protected
+              <div
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-4"
+                style={{
+                  backgroundColor: `${activeVault.badgeColor}15`,
+                  borderColor: `${activeVault.badgeColor}33`,
+                  color: activeVault.badgeColor,
+                  borderWidth: 1,
+                  borderStyle: "solid",
+                }}
+              >
+                {activeVault.badge}
               </div>
               <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight mb-3">
-                SOL Exposure
+                {activeVault.heading}
                 <br />
-                <span className="text-[var(--text-muted)]">Without the Downside</span>
+                <span className="text-[var(--text-muted)]">{activeVault.headingSub}</span>
               </h1>
-              <p className="text-[var(--text-muted)] mb-6">
-                Deposit USDC. Your capital earns yield on Kamino while a portion captures SOL upside.
-                After {PROTECTION_HORIZON_DAYS} days, you get back at least what you put in.
-              </p>
+              <p className="text-[var(--text-muted)] mb-6">{activeVault.description}</p>
 
-              {/* Stats */}
               <div className="grid grid-cols-3 gap-4">
-                <div className="stat-card p-3">
-                  <div className="text-xl font-bold text-[var(--green)]">{pctFmt(kaminoApy * 100)}</div>
-                  <div className="text-[10px] text-[var(--text-muted)] mt-0.5">Kamino APY</div>
-                </div>
-                <div className="stat-card p-3">
-                  <div className="text-xl font-bold text-[var(--primary)]">{pctFmt(alloc.spotPct)}</div>
-                  <div className="text-[10px] text-[var(--text-muted)] mt-0.5">SOL Exposure</div>
-                </div>
-                <div className="stat-card p-3">
-                  <div className="text-xl font-bold">{PROTECTION_HORIZON_DAYS}d</div>
-                  <div className="text-[10px] text-[var(--text-muted)] mt-0.5">Protection</div>
-                </div>
+                {activeVault.stats.map((s, i) => (
+                  <div key={i} className="stat-card p-3">
+                    <div className="text-xl font-bold" style={{ color: s.color || "var(--text)" }}>{s.value}</div>
+                    <div className="text-[10px] text-[var(--text-muted)] mt-0.5">{s.label}</div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -477,10 +445,8 @@ export default function EarnPage() {
                                   headers: { "Content-Type": "application/json" },
                                   body: JSON.stringify({ wallet: publicKey!.toBase58() }),
                                 });
-                                if (r.ok || r.status === 429) {
-                                  setFaucetStatus(null);
-                                  fetchData();
-                                } else { setFaucetStatus("failed"); }
+                                if (r.ok || r.status === 429) { setFaucetStatus(null); fetchData(); }
+                                else { setFaucetStatus("failed"); }
                               } catch { setFaucetStatus("failed"); }
                             }}
                             className="text-[10px] text-[var(--primary)] hover:underline"
@@ -514,7 +480,6 @@ export default function EarnPage() {
                     </button>
                   </div>
 
-                  {/* Divider */}
                   <div className="border-t border-[var(--border)]" />
 
                   {/* Position + Withdraw */}
@@ -565,41 +530,65 @@ export default function EarnPage() {
 
       <div className="max-w-[1100px] mx-auto px-6 py-8 space-y-8">
 
-        {/* Allocation bar */}
-        <section>
-          <div className="panel p-5">
-            <div className="flex rounded-lg overflow-hidden h-8 mb-3">
-              <div
-                className="bg-[var(--primary)]/20 flex items-center justify-center text-xs font-medium text-[var(--primary)]"
-                style={{ width: `${alloc.lendingPct}%` }}
-              >
-                Kamino {pctFmt(alloc.lendingPct)}
+        {/* Allocation bar (only for Principal Protected) */}
+        {activeVault.allocationBar && (
+          <section>
+            <div className="panel p-5">
+              <div className="flex rounded-lg overflow-hidden h-8 mb-3">
+                <div
+                  className="bg-[var(--primary)]/20 flex items-center justify-center text-xs font-medium text-[var(--primary)]"
+                  style={{ width: `${activeVault.allocationBar.leftPct}%` }}
+                >
+                  {activeVault.allocationBar.left}
+                </div>
+                <div
+                  className="bg-[var(--green)]/20 flex items-center justify-center text-xs font-medium text-[var(--green)]"
+                  style={{ width: `${activeVault.allocationBar.rightPct}%` }}
+                >
+                  {activeVault.allocationBar.right}
+                </div>
               </div>
-              <div
-                className="bg-[var(--green)]/20 flex items-center justify-center text-xs font-medium text-[var(--green)]"
-                style={{ width: `${alloc.spotPct}%` }}
-              >
-                SOL {pctFmt(alloc.spotPct)}
+              <div className="grid grid-cols-3 gap-4 text-center text-xs">
+                <div>
+                  <span className="text-[var(--text-muted)]">TVL</span>
+                  <div className="font-semibold mt-0.5">${tvl.toFixed(2)}</div>
+                </div>
+                <div>
+                  <span className="text-[var(--text-muted)]">Min Yield</span>
+                  <div className="font-semibold mt-0.5">8.1% APY</div>
+                </div>
+                <div>
+                  <span className="text-[var(--text-muted)]">Fees</span>
+                  <div className="font-semibold mt-0.5">{activeVault.feesLabel}</div>
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4 text-center text-xs">
-              <div>
-                <span className="text-[var(--text-muted)]">TVL</span>
-                <div className="font-semibold mt-0.5">${tvl.toFixed(2)}</div>
-              </div>
-              <div>
-                <span className="text-[var(--text-muted)]">Min Yield</span>
-                <div className="font-semibold mt-0.5">{pctFmt(minYield * 100)} APY</div>
-              </div>
-              <div>
-                <span className="text-[var(--text-muted)]">Fees</span>
-                <div className="font-semibold mt-0.5">10% perf / 1% mgmt</div>
-              </div>
-            </div>
-          </div>
-        </section>
+          </section>
+        )}
 
-        {/* Your Positions — portfolio across all vaults */}
+        {/* Funding Rate info (only for Funding Rate) */}
+        {activeVault.id === "funding" && (
+          <section>
+            <div className="panel p-5">
+              <div className="grid grid-cols-3 gap-4 text-center text-xs">
+                <div>
+                  <span className="text-[var(--text-muted)]">TVL</span>
+                  <div className="font-semibold mt-0.5">${tvl.toFixed(2)}</div>
+                </div>
+                <div>
+                  <span className="text-[var(--text-muted)]">Strategy</span>
+                  <div className="font-semibold mt-0.5">Venue-Agnostic</div>
+                </div>
+                <div>
+                  <span className="text-[var(--text-muted)]">Fees</span>
+                  <div className="font-semibold mt-0.5">{activeVault.feesLabel}</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Your Positions */}
         {connected && positions.length > 0 && (
           <section>
             <div className="flex items-center justify-between mb-3">
@@ -649,28 +638,41 @@ export default function EarnPage() {
             <span className="text-xs">{showHow ? "v" : ">"}</span>
             How it works
           </button>
-          {showHow && (
+          {showHow && activeVault.id === "protected" && (
             <div className="grid md:grid-cols-3 gap-3">
               <div className="stat-card p-4">
                 <div className="text-xs font-mono text-[var(--primary)] mb-1">01</div>
                 <h3 className="text-sm font-medium mb-1">You Deposit USDC</h3>
-                <p className="text-xs text-[var(--text-muted)]">
-                  USDC enters the Syntx vault. The keeper splits it automatically.
-                </p>
+                <p className="text-xs text-[var(--text-muted)]">USDC enters the Syntx vault. The keeper splits it automatically.</p>
               </div>
               <div className="stat-card p-4">
                 <div className="text-xs font-mono text-[var(--primary)] mb-1">02</div>
-                <h3 className="text-sm font-medium mb-1">Auto Allocation</h3>
-                <p className="text-xs text-[var(--text-muted)]">
-                  {pctFmt(alloc.lendingPct)} earns yield on Kamino. {pctFmt(alloc.spotPct)} buys SOL for upside.
-                </p>
+                <h3 className="text-sm font-medium mb-1">Delta Hedge</h3>
+                <p className="text-xs text-[var(--text-muted)]">93% earns yield on Kamino. 7% runs a delta-hedged perp for SOL upside.</p>
               </div>
               <div className="stat-card p-4">
                 <div className="text-xs font-mono text-[var(--primary)] mb-1">03</div>
                 <h3 className="text-sm font-medium mb-1">Protected</h3>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Lending yield covers worst-case loss. After {PROTECTION_HORIZON_DAYS} days, at least your full deposit back.
-                </p>
+                <p className="text-xs text-[var(--text-muted)]">Lending yield covers worst-case loss. After 30 days, at least your full deposit back.</p>
+              </div>
+            </div>
+          )}
+          {showHow && activeVault.id === "funding" && (
+            <div className="grid md:grid-cols-3 gap-3">
+              <div className="stat-card p-4">
+                <div className="text-xs font-mono text-[var(--primary)] mb-1">01</div>
+                <h3 className="text-sm font-medium mb-1">You Deposit USDC</h3>
+                <p className="text-xs text-[var(--text-muted)]">USDC enters the vault as collateral for perp trading.</p>
+              </div>
+              <div className="stat-card p-4">
+                <div className="text-xs font-mono text-[var(--primary)] mb-1">02</div>
+                <h3 className="text-sm font-medium mb-1">Collect Funding</h3>
+                <p className="text-xs text-[var(--text-muted)]">Keeper goes long or short based on funding rate direction. Collects payments every tick.</p>
+              </div>
+              <div className="stat-card p-4">
+                <div className="text-xs font-mono text-[var(--primary)] mb-1">03</div>
+                <h3 className="text-sm font-medium mb-1">Venue Agnostic</h3>
+                <p className="text-xs text-[var(--text-muted)]">Routes across Percolator, Jupiter Perps, or Phoenix — picks the best funding rate automatically.</p>
               </div>
             </div>
           )}
