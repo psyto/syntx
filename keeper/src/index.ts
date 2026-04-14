@@ -1,7 +1,9 @@
 import { Connection, Keypair } from "@solana/web3.js";
 import { readFileSync } from "fs";
-import { loadConfig } from "./config";
+import { loadConfig, Config } from "./config";
 import { runKeeper } from "./keeper";
+import { runStructuredKeeper } from "./structured-keeper";
+import { DEFAULT_CONFIG as DEFAULT_STRUCTURED_CONFIG } from "./structured-strategy";
 import { VenueAdapter, PercolatorAdapter, PhoenixAdapter, JupiterPerpsAdapter, KaminoAdapter, VenueRouter } from "./venues";
 
 function loadKeypair(path: string): Keypair {
@@ -111,10 +113,51 @@ function createVenue(config: ReturnType<typeof loadConfig>): VenueAdapter {
   }
 }
 
+function createSpotVenue(config: Config, connection: Connection, manager: Keypair): VenueAdapter {
+  const spotVenueType = config.spotVenue ?? "phoenix";
+  switch (spotVenueType) {
+    case "phoenix":
+      if (!config.phoenixMarket) throw new Error("Structured strategy requires PHOENIX_MARKET for spot venue");
+      return new PhoenixAdapter({ connection, manager, vaultPda: config.vaultPda, marketAddress: config.phoenixMarket });
+    case "jupiter":
+      return new JupiterPerpsAdapter({ connection, manager, vaultPda: config.vaultPda, market: config.jupiterMarket ?? "SOL" });
+    default:
+      throw new Error(`Unsupported spot venue for structured strategy: ${spotVenueType}`);
+  }
+}
+
 async function main(): Promise<void> {
   const config = loadConfig();
-  const venue = createVenue(config);
-  await runKeeper(venue, { crankIntervalMs: config.crankIntervalMs });
+
+  if (config.strategy === "structured") {
+    const connection = new Connection(config.rpcUrl, "confirmed");
+    const manager = loadKeypair(config.managerKeypairPath);
+
+    const lendingVenue = new KaminoAdapter({
+      connection, manager, vaultPda: config.vaultPda,
+      marketAddress: config.kaminoMarket, reserveMint: config.kaminoReserve,
+    });
+    const spotVenue = createSpotVenue(config, connection, manager);
+
+    // Total capital function — reads vault's USDC balance
+    // In production, read from on-chain vault state
+    const totalCapitalFn = async (): Promise<bigint> => {
+      const lendingPos = await lendingVenue.getPosition();
+      const spotPos = await spotVenue.getPosition();
+      return (lendingPos?.capital ?? 0n) + (spotPos?.capital ?? 0n);
+    };
+
+    await runStructuredKeeper(lendingVenue, spotVenue, totalCapitalFn, {
+      crankIntervalMs: config.crankIntervalMs,
+      strategy: {
+        ...DEFAULT_STRUCTURED_CONFIG,
+        protectionHorizonDays: config.protectionHorizonDays ?? 30,
+      },
+    });
+  } else {
+    const venue = createVenue(config);
+    await runKeeper(venue, { crankIntervalMs: config.crankIntervalMs });
+  }
 }
 
 main().catch((err) => {
