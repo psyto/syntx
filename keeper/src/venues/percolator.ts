@@ -62,8 +62,14 @@ export class PercolatorAdapter implements VenueAdapter {
   }
 
   async getPrice(_market: string): Promise<number> {
-    // In production, fetch from Pyth oracle. For now, hardcoded.
-    return 138.0;
+    const slabData = await this.refreshSlab();
+    // Read authority_price_e6 from config (offset 360 in slab = config offset 288)
+    const CONFIG_AUTH_PRICE_OFF = 360;
+    if (slabData.length > CONFIG_AUTH_PRICE_OFF + 8) {
+      const priceE6 = slabData.readBigUInt64LE(CONFIG_AUTH_PRICE_OFF);
+      if (priceE6 > 0n) return Number(priceE6) / 1_000_000;
+    }
+    return 0;
   }
 
   async getPosition(): Promise<Position | null> {
@@ -128,7 +134,14 @@ export class PercolatorAdapter implements VenueAdapter {
     const { connection, manager, percolatorProgramId, percolatorSlab } = this.config;
 
     // 1. Push oracle price (with retry)
-    const price = 138_000_000; // $138 — in production, fetch from Pyth
+    // Read current authority price from slab, or use default
+    const slabData = await this.refreshSlab();
+    const CONFIG_AUTH_PRICE_OFF = 360;
+    let price = 130_000_000; // default $130
+    if (slabData.length > CONFIG_AUTH_PRICE_OFF + 8) {
+      const stored = Number(slabData.readBigUInt64LE(CONFIG_AUTH_PRICE_OFF));
+      if (stored > 0) price = stored;
+    }
     await this.pushOracleWithRetry(price, 3);
 
     // 2. Crank funding settlement
