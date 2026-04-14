@@ -1,0 +1,16 @@
+{
+  "network": "devnet",
+  "type": "structured-product",
+  "createdAt": "2026-04-14T09:57:10.928Z",
+  "syntxProgramId": "53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V",
+  "percolatorProgramId": "Edq18N2pdT3Sz9EukbZe4YsQkvmxvmmkUL1KHpv96xJF",
+  "slab": "9Gh75RYAkN5wD97HtHo6Za6RwPReZSAcgNxtbvYy2jDF",
+  "collateralMint": "AhGQVQm7HudP6eWekMDLZiZogwvnMPFGL5owZCHFGquC",
+  "vaultPda": "4YjEj2jXshYtAqz49Lxkc4ZbqndX4MFEZaY4rsGt1JcV",
+  "shareMint": "7mvErLkd3Ne7wZaCx1V2HGd13zTi9gEWLCVHuozyoDnN",
+  "vaultCollateral": "5G18BzTuBJG5Eh33o1JXNtdEyWm9vgQ9xj8WaZPNSje2",
+  "managerPubkey": "Fzap3kka9XUvJXhJbu9dDLJBffpLNTQGRpNCXejktuFq",
+  "managerKeypairFile": "structured-manager.json",
+  "phoenixMarket": "4DoNfFBfF7UokCC2FQzriy7yHK6DY6NVdYpuekQ5pRgg",
+  "percolatorUserIdx": 1
+}
