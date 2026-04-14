@@ -1,322 +1,245 @@
 "use client";
 
-import { useState } from "react";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useEffect, useState, useCallback } from "react";
+import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
-import dynamic from "next/dynamic";
 
-const WalletMultiButton = dynamic(
-  () => import("@solana/wallet-adapter-react-ui").then((mod) => mod.WalletMultiButton),
-  { ssr: false },
-);
-
-const SwapDeposit = dynamic(() => import("../components/SwapDeposit"), { ssr: false });
-
-interface Recipe {
-  id: string;
-  title: string;
-  description: string;
-  steps: string[];
-  protocols: string[];
-  status: "live" | "coming-soon";
-  apy?: string;
-}
-
-const recipes: Recipe[] = [
+// Venue addresses on devnet
+const VENUES = [
   {
-    id: "swap-deposit",
-    title: "One-Click Deposit",
-    description: "Get test USDC from faucet and deposit into a vault — all in one click. On mainnet, this would swap any token via Jupiter first.",
-    steps: [
-      "Click the button below",
-      "Faucet mints 100 test USDC + SOL for gas",
-      "Syntx deposits 10 USDC into SOL Funding Rate vault",
-      "Receive share tokens (check Earn page)",
-    ],
-    protocols: ["Faucet", "Syntx"],
-    status: "live",
+    name: "Kamino",
+    type: "lending" as const,
+    description: "USDC lending — earns yield for principal protection",
+    role: "Protection leg",
+    color: "var(--primary)",
+    // Kamino Main Market (mainnet address — simulated on devnet)
+    address: "7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF",
+    simulated: true,
   },
   {
-    id: "dn-oneclick",
-    title: "One-Click Delta Neutral",
-    description: "Swap half your SOL to USDC, deposit into vault, keeper automatically shorts SOL-PERP. Zero price risk, earn funding rate.",
-    steps: [
-      "Deposit SOL",
-      "Jupiter swaps 50% to USDC",
-      "Syntx deposits to DN vault",
-      "Keeper opens matching short",
-      "Earn funding rate (neutral to price)",
-    ],
-    protocols: ["Jupiter", "Syntx", "Percolator"],
-    status: "coming-soon",
-    apy: "~8-15%",
+    name: "Jupiter Perps",
+    type: "perp" as const,
+    description: "Oracle-based AMM — delta hedge execution",
+    role: "Delta hedge leg",
+    color: "var(--green)",
+    address: "PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu",
+    simulated: false,
   },
   {
-    id: "leveraged-yield",
-    title: "Leveraged Vault Yield",
-    description: "Deposit into vault, use shares as collateral on Kamino, borrow more, deposit again. 1.7x leveraged yield.",
-    steps: [
-      "Deposit 100 USDC → get 100 shares",
-      "Deposit shares as collateral on Kamino",
-      "Borrow 70 USDC against shares",
-      "Deposit 70 USDC → get 70 more shares",
-      "Total: 170 USDC exposure on 100 capital",
-    ],
-    protocols: ["Syntx", "Kamino"],
-    status: "coming-soon",
-    apy: "~17% (1.7x)",
+    name: "Phoenix",
+    type: "spot" as const,
+    description: "CLOB orderbook — spot SOL execution",
+    role: "Spot execution",
+    color: "var(--orange)",
+    address: "4DoNfFBfF7UokCC2FQzriy7yHK6DY6NVdYpuekQ5pRgg",
+    simulated: false,
   },
   {
-    id: "treasury-hedge",
-    title: "Protocol Treasury Hedge",
-    description: "DAOs deposit treasury SOL into a vault that automatically hedges via perp shorts. Protect revenue from downside.",
-    steps: [
-      "DAO approves via Squads multisig",
-      "Treasury SOL deposited to hedge vault",
-      "Keeper shorts SOL-PERP for 50% hedge",
-      "Treasury protected from SOL downside",
-      "Earn funding when shorts are paid",
-    ],
-    protocols: ["Squads", "Syntx", "Percolator"],
-    status: "coming-soon",
-  },
-  {
-    id: "atomic-hedge",
-    title: "Lending Protocol Auto-Hedge",
-    description: "Kamino or Marginfi CPI into Syntx to automatically hedge lending exposure. Atomic — same transaction as the loan.",
-    steps: [
-      "User borrows SOL on Kamino",
-      "Kamino CPI calls Syntx cpi_trade",
-      "Syntx opens matching short on Percolator",
-      "Hedge is atomic with the loan",
-      "If loan fails, hedge reverts too",
-    ],
-    protocols: ["Kamino", "Syntx", "Percolator"],
-    status: "coming-soon",
-  },
-  {
-    id: "spot-perp-arb",
-    title: "Spot + Perp Arbitrage",
-    description: "Buy spot on Phoenix, short perp on Syntx in one transaction. Capture basis spread with zero directional risk.",
-    steps: [
-      "Detect basis spread (spot vs perp price)",
-      "Phoenix: buy spot SOL",
-      "Syntx: short SOL-PERP",
-      "Both in one atomic transaction",
-      "Earn basis convergence + funding",
-    ],
-    protocols: ["Phoenix", "Syntx", "Percolator"],
-    status: "coming-soon",
+    name: "Percolator",
+    type: "perp" as const,
+    description: "Slab-based risk engine — funding rate trading",
+    role: "Funding rate leg",
+    color: "#a78bfa",
+    address: "Edq18N2pdT3Sz9EukbZe4YsQkvmxvmmkUL1KHpv96xJF",
+    simulated: false,
   },
 ];
 
+// Router scoring logic (mirrors keeper/src/venues/router.ts)
+function computeScore(venue: typeof VENUES[0], state: { fundingRate: number; depth: number; insured: boolean }): number {
+  let score = 0;
+  if (venue.type === "perp") {
+    score += Math.abs(state.fundingRate) * 10;
+    if (state.insured) score += 20;
+  }
+  if (venue.type === "spot") score += 5;
+  if (venue.type === "lending") score += state.fundingRate * 100; // APY as pseudo score
+  score += Math.min(state.depth, 50);
+  return Math.round(score);
+}
+
+function short(addr: string): string {
+  return addr.slice(0, 4) + "..." + addr.slice(-4);
+}
+
 export default function ComposePage() {
-  const { publicKey } = useWallet();
-  const [selectedRecipe, setSelectedRecipe] = useState<string | null>(null);
+  const { connection } = useConnection();
+  const [venueStates, setVenueStates] = useState<Record<string, { live: boolean; accounts: number }>>({});
+  const [selectedVenue, setSelectedVenue] = useState<string | null>(null);
+
+  // Check which venues are live on-chain
+  const checkVenues = useCallback(async () => {
+    const states: Record<string, { live: boolean; accounts: number }> = {};
+    for (const v of VENUES) {
+      try {
+        if (v.simulated) {
+          states[v.name] = { live: true, accounts: 0 };
+        } else {
+          const info = await connection.getAccountInfo(new PublicKey(v.address));
+          states[v.name] = { live: !!info, accounts: info ? info.data.length : 0 };
+        }
+      } catch {
+        states[v.name] = { live: false, accounts: 0 };
+      }
+    }
+    setVenueStates(states);
+  }, [connection]);
+
+  useEffect(() => { checkVenues(); }, [checkVenues]);
+
+  // Simulated venue states for scoring demo
+  const scoringData = [
+    { venue: "Kamino", fundingRate: 0.082, depth: 100, insured: false, label: "8.2% APY" },
+    { venue: "Jupiter Perps", fundingRate: 12, depth: 45, insured: true, label: "+12 bps/slot" },
+    { venue: "Phoenix", fundingRate: 0, depth: 30, insured: false, label: "Spot" },
+    { venue: "Percolator", fundingRate: 8, depth: 20, insured: false, label: "+8 bps/slot" },
+  ];
+
+  const scores = scoringData.map((s) => {
+    const venue = VENUES.find((v) => v.name === s.venue)!;
+    return { ...s, score: computeScore(venue, s), venue: venue };
+  }).sort((a, b) => b.score - a.score);
+
+  const bestVenue = scores[0];
 
   return (
     <div className="max-w-[1100px] mx-auto px-6 py-10">
       <div className="mb-8">
         <h1 className="text-2xl font-bold mb-2">Compose</h1>
         <p className="text-[var(--text-muted)] max-w-2xl">
-          Build multi-protocol DeFi strategies in one flow. Syntx vaults route across
-          Percolator, Phoenix, and Jupiter Perps — then compose with Kamino, Marginfi,
-          and any Solana program via CPI. Exchange-agnostic composability.
+          Syntx vaults route across any execution venue through a unified VenueAdapter interface.
+          The keeper scores venues in real-time and routes to the best one. Adding a new DEX means
+          implementing 6 methods — the strategy code never changes.
         </p>
       </div>
 
-      {/* Live vs Coming Soon filter */}
-      <div className="flex gap-2 mb-6">
-        <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)] self-center mr-2">Filter:</span>
-        <button
-          onClick={() => setSelectedRecipe(null)}
-          className={`text-xs px-3 py-1.5 rounded-lg transition ${
-            !selectedRecipe ? "bg-[var(--primary)] text-white" : "bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-white"
-          }`}
-        >
-          All
-        </button>
-      </div>
-
-      {/* Recipe Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-[1px] bg-[var(--border)] rounded-xl overflow-hidden">
-        {recipes.map((r) => {
-          const isExpanded = selectedRecipe === r.id;
-          return (
-            <div key={r.id} className="bg-[var(--bg-panel)]">
+      {/* Live Venue Status */}
+      <section className="mb-8">
+        <h2 className="text-xs font-mono uppercase tracking-wider text-[var(--text-muted)] mb-3">Connected Venues</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {VENUES.map((v) => {
+            const state = venueStates[v.name];
+            const isLive = state?.live;
+            const isSelected = selectedVenue === v.name;
+            return (
               <button
-                onClick={() => setSelectedRecipe(isExpanded ? null : r.id)}
-                className="w-full p-6 text-left hover:bg-[var(--bg-card)] transition"
+                key={v.name}
+                onClick={() => setSelectedVenue(isSelected ? null : v.name)}
+                className={`panel p-4 text-left transition hover:border-[var(--border-hover)] ${isSelected ? "border-[var(--primary)]/50" : ""}`}
               >
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold">{r.title}</h3>
-                  <div className="flex items-center gap-2">
-                    {r.apy && (
-                      <span className="text-xs font-mono text-[var(--green)]">{r.apy}</span>
-                    )}
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
-                      r.status === "live"
-                        ? "bg-green-950 text-[var(--green)]"
-                        : "bg-yellow-950 text-yellow-400"
-                    }`}>
-                      {r.status === "live" ? "LIVE" : "SOON"}
-                    </span>
-                  </div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">{v.name}</span>
+                  <span className={`w-2 h-2 rounded-full ${isLive ? "bg-[var(--green)]" : "bg-[var(--red)]"}`} />
                 </div>
-                <p className="text-xs text-[var(--text-muted)] mb-3 leading-relaxed">{r.description}</p>
-                <div className="flex gap-1.5 flex-wrap">
-                  {r.protocols.map((p) => (
-                    <span key={p} className="text-[9px] font-mono px-2 py-0.5 rounded bg-[var(--bg)] border border-[var(--border)] text-[var(--text-dim)]">
-                      {p}
-                    </span>
-                  ))}
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-[8px] font-mono uppercase px-1.5 py-0.5 rounded ${
+                    v.type === "perp" ? "bg-blue-950 text-blue-400" :
+                    v.type === "spot" ? "bg-green-950 text-[var(--green)]" :
+                    "bg-cyan-950 text-[var(--primary)]"
+                  }`}>{v.type}</span>
+                  {v.simulated && <span className="text-[8px] text-[var(--text-muted)]">sim</span>}
                 </div>
+                <div className="text-[10px] text-[var(--text-muted)]">{v.role}</div>
               </button>
+            );
+          })}
+        </div>
 
-              {/* Expanded: Step-by-step */}
-              {isExpanded && (
-                <div className="px-6 pb-6 border-t border-[var(--border)]">
-                  <div className="pt-4 space-y-2">
-                    {r.steps.map((step, i) => (
-                      <div key={i} className="flex items-start gap-3">
-                        <div className="w-5 h-5 rounded-full bg-[var(--bg-card)] border border-[var(--border)] flex items-center justify-center text-[9px] font-mono text-[var(--text-dim)] flex-shrink-0 mt-0.5">
-                          {i + 1}
-                        </div>
-                        <span className="text-sm text-[var(--text-muted)]">{step}</span>
-                      </div>
-                    ))}
+        {/* Expanded venue detail */}
+        {selectedVenue && (
+          <div className="mt-3 panel p-4">
+            {(() => {
+              const v = VENUES.find((v) => v.name === selectedVenue)!;
+              const state = venueStates[v.name];
+              return (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">{v.name}</div>
+                  <div className="text-xs text-[var(--text-muted)]">{v.description}</div>
+                  <div className="grid grid-cols-2 gap-4 text-xs mt-2">
+                    <div>
+                      <span className="text-[var(--text-muted)]">Address</span>
+                      <div className="font-mono mt-0.5">{short(v.address)}</div>
+                    </div>
+                    <div>
+                      <span className="text-[var(--text-muted)]">Status</span>
+                      <div className="mt-0.5">{state?.live ? "Live on devnet" : "Not found"}</div>
+                    </div>
                   </div>
-
-                  {r.status === "live" && r.id === "swap-deposit" ? (
-                    <div className="mt-4">
-                      <SwapDeposit onSuccess={() => {}} />
-                    </div>
-                  ) : r.status === "live" ? (
-                    <a
-                      href="/vaults"
-                      className="mt-4 inline-flex h-9 px-5 items-center bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-lg text-xs font-medium transition"
-                    >
-                      Try Now
-                    </a>
-                  ) : (
-                    <div className="mt-4 text-xs text-[var(--text-dim)] font-mono">
-                      Coming soon — CPI interface ready, needs frontend integration
-                    </div>
-                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })()}
+          </div>
+        )}
+      </section>
 
-      {/* Multi-Venue Architecture */}
-      <div className="mt-10 panel p-6">
-        <h3 className="text-xs font-mono uppercase tracking-wider text-[var(--text-dim)] mb-2">
-          Exchange-Agnostic Architecture
-        </h3>
-        <p className="text-xs text-[var(--text-muted)] mb-6">
-          Vaults route trades through a VenueAdapter interface across 3 fundamentally different architectures.
-          Adding a new DEX means implementing 6 methods — the strategy code never changes.
-        </p>
-
-        {/* Architecture Diagram */}
-        <div className="bg-[var(--bg)] rounded-xl border border-[var(--border)] p-6 mb-6">
-          <div className="flex flex-col md:flex-row items-center justify-center gap-3 md:gap-5 text-xs font-mono">
-            {/* Left: Users */}
-            <div className="flex flex-col gap-2 items-center">
-              <ArchBox label="Depositors" sub="USDC" />
-              <ArchBox label="DeFi Protocols" sub="CPI" accent />
-            </div>
-
-            <div className="text-[var(--text-dim)] text-lg md:rotate-0 rotate-90">→</div>
-
-            {/* Center: Syntx */}
-            <div className="flex flex-col items-center gap-2">
-              <div className="px-6 py-4 bg-[var(--primary)]/10 border border-[var(--primary)]/30 rounded-lg text-center">
-                <div className="text-[9px] uppercase tracking-wider text-[var(--primary)] mb-1">Syntx Vault (PDA)</div>
-                <div className="text-sm font-semibold">VenueRouter</div>
-                <div className="text-[9px] text-[var(--text-dim)] mt-1">Scores → Routes → Executes</div>
-              </div>
-              <div className="flex gap-2">
-                <span className="text-[8px] px-2 py-0.5 rounded bg-green-950 text-[var(--green)]">SPL Shares</span>
-                <span className="text-[8px] px-2 py-0.5 rounded bg-blue-950 text-blue-400">Circuit Breaker</span>
-              </div>
-            </div>
-
-            <div className="text-[var(--text-dim)] text-lg md:rotate-0 rotate-90">→</div>
-
-            {/* Right: Venues */}
-            <div className="flex flex-col gap-2">
-              <VenueBox name="Percolator" type="perp" sub="Slab-based risk engine" />
-              <VenueBox name="Phoenix" type="spot" sub="CLOB orderbook" />
-              <VenueBox name="Jupiter Perps" type="perp" sub="Oracle-based AMM" />
-              <div className="px-4 py-2 border border-dashed border-[var(--border)] rounded-lg text-center text-[var(--text-dim)]">
-                + Your DEX here
-              </div>
-            </div>
+      {/* VenueRouter Scoring */}
+      <section className="mb-8">
+        <h2 className="text-xs font-mono uppercase tracking-wider text-[var(--text-muted)] mb-3">VenueRouter Scoring</h2>
+        <div className="panel p-5">
+          <p className="text-xs text-[var(--text-muted)] mb-4">
+            The keeper scores each venue based on funding rate, liquidity depth, and insurance.
+            The highest-scoring venue gets the trade.
+          </p>
+          <div className="space-y-2">
+            {scores.map((s, i) => {
+              const maxScore = scores[0].score;
+              const pct = maxScore > 0 ? (s.score / maxScore) * 100 : 0;
+              const isBest = i === 0;
+              return (
+                <div key={s.venue.name} className="flex items-center gap-3">
+                  <span className="text-xs font-medium w-28 shrink-0">{s.venue.name}</span>
+                  <div className="flex-1 h-6 bg-[var(--bg)] rounded overflow-hidden">
+                    <div
+                      className="h-full rounded flex items-center px-2 text-[10px] font-mono transition-all"
+                      style={{
+                        width: `${Math.max(pct, 10)}%`,
+                        backgroundColor: isBest ? `${s.venue.color}33` : "var(--bg-card)",
+                        borderLeft: isBest ? `3px solid ${s.venue.color}` : "3px solid var(--border)",
+                      }}
+                    >
+                      {s.score}
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-[var(--text-muted)] w-24 text-right">{s.label}</span>
+                  {isBest && <span className="text-[8px] px-1.5 py-0.5 rounded bg-green-950 text-[var(--green)]">SELECTED</span>}
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-3 pt-3 border-t border-[var(--border)] text-xs text-[var(--text-muted)]">
+            Best venue: <span className="text-[var(--text)] font-medium">{bestVenue.venue.name}</span> (score {bestVenue.score}) — {bestVenue.venue.description}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* CPI Interface */}
-      <div className="mt-6 panel p-6">
-        <h3 className="text-xs font-mono uppercase tracking-wider text-[var(--text-dim)] mb-2">
-          CPI Interface
-        </h3>
-        <p className="text-xs text-[var(--text-muted)] mb-6">
-          Any Solana program can trade through Syntx vaults. Atomic execution — if any step fails, everything reverts.
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-[1px] bg-[var(--border)] rounded-xl overflow-hidden">
-          <div className="bg-[var(--bg-panel)] p-5">
-            <div className="text-[var(--primary)] font-mono text-sm mb-2">cpi_trade</div>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed mb-3">
-              Public trading interface — any whitelisted program can open/close positions through the vault.
-            </p>
-            <CodeBlock code={`// Another program calls Syntx
-invoke_signed(
-  &cpi_trade_ix,
-  &[vault, slab, percolator],
-  &[&seeds],
-)?;`} />
+      {/* Strategy Composition */}
+      <section className="mb-8">
+        <h2 className="text-xs font-mono uppercase tracking-wider text-[var(--text-muted)] mb-3">Strategy Composition</h2>
+        <div className="panel p-5">
+          <div className="text-xs text-[var(--text-muted)] mb-4">
+            The Principal Protected SOL vault composes two venues in a single keeper loop:
           </div>
-          <div className="bg-[var(--bg-panel)] p-5">
-            <div className="text-[var(--primary)] font-mono text-sm mb-2">get_share_price</div>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed mb-3">
-              On-chain oracle. Lending protocols value Syntx shares as collateral without external oracles.
-            </p>
-            <CodeBlock code={`// Read share price on-chain
-let vault = VaultState::load(
-  &vault_account
-)?;
-let price = vault.equity()
-  / vault.total_shares;`} />
-          </div>
-          <div className="bg-[var(--bg-panel)] p-5">
-            <div className="text-[var(--primary)] font-mono text-sm mb-2">deposit / withdraw</div>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed mb-3">
-              Standard vault operations. Deposit collateral, receive SPL share tokens. Withdraw burns shares.
-            </p>
-            <CodeBlock code={`// Deposit via SDK
-const ix = syntx.deposit({
-  amount: 1_000_000n,
-  vault: vaultPda,
-  userCollateral: ata,
-});`} />
+          <div className="bg-[var(--bg)] rounded-lg border border-[var(--border)] p-4 font-mono text-xs space-y-1">
+            <div className="text-[var(--text-muted)]">{"// structured-keeper.ts — each tick:"}</div>
+            <div><span className="text-[var(--primary)]">1.</span> Read Kamino APY → compute allocation split</div>
+            <div><span className="text-[var(--primary)]">2.</span> Read SOL price → compute Black-Scholes delta</div>
+            <div><span className="text-[var(--primary)]">3.</span> If delta drift {">"} 5% → rebalance Jupiter Perps position</div>
+            <div><span className="text-[var(--primary)]">4.</span> Sleep 30s → repeat</div>
+            <div className="mt-2 text-[var(--text-muted)]">{"// Same VenueAdapter interface for both venues"}</div>
+            <div className="text-[var(--text-muted)]">{"// Swap Jupiter for Drift or Phoenix — zero strategy code changes"}</div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Venue Adapter */}
-      <div className="mt-6 panel p-6">
-        <h3 className="text-xs font-mono uppercase tracking-wider text-[var(--text-dim)] mb-2">
-          Add a new venue
-        </h3>
-        <p className="text-xs text-[var(--text-muted)] mb-4">
-          Implement the VenueAdapter interface — 6 methods. The keeper and strategy code stays unchanged.
-        </p>
-        <CodeBlock code={`interface VenueAdapter {
+      {/* VenueAdapter Interface */}
+      <section className="mb-8">
+        <h2 className="text-xs font-mono uppercase tracking-wider text-[var(--text-muted)] mb-3">VenueAdapter Interface</h2>
+        <div className="panel p-5">
+          <p className="text-xs text-[var(--text-muted)] mb-4">
+            Implement 6 methods to add any DEX. The keeper and strategy code stays unchanged.
+          </p>
+          <pre className="bg-[var(--bg)] border border-[var(--border)] rounded-lg p-3 text-[11px] font-mono text-[var(--text-muted)] leading-relaxed overflow-x-auto">
+{`interface VenueAdapter {
   readonly name: string;
   readonly type: "perp" | "spot" | "hybrid";
 
@@ -328,46 +251,35 @@ const ix = syntx.deposit({
   crank(): Promise<void>;
 }
 
-// Example: add Drift as a venue
-class DriftAdapter implements VenueAdapter {
-  readonly name = "Drift";
-  readonly type = "perp";
-  // ... implement 6 methods
-}`} />
-      </div>
-    </div>
-  );
-}
+// Implemented: Percolator, Phoenix, Jupiter Perps, Kamino
+// Add yours: Drift, Marginfi, Meteora, ...`}</pre>
+        </div>
+      </section>
 
-function ArchBox({ label, sub, accent }: { label: string; sub: string; accent?: boolean }) {
-  return (
-    <div className={`px-4 py-3 rounded-lg text-center border ${accent ? "border-[var(--primary)]/30 bg-[var(--primary)]/5" : "border-[var(--border)] bg-[var(--bg-card)]"}`}>
-      <div className="text-xs font-medium">{label}</div>
-      <div className="text-[9px] text-[var(--text-dim)]">{sub}</div>
+      {/* CPI Interface */}
+      <section className="pb-6">
+        <h2 className="text-xs font-mono uppercase tracking-wider text-[var(--text-muted)] mb-3">CPI Composability</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="panel p-4">
+            <div className="text-[var(--primary)] font-mono text-sm mb-2">cpi_trade</div>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              Any whitelisted program can open/close positions through the vault. Atomic — fails together.
+            </p>
+          </div>
+          <div className="panel p-4">
+            <div className="text-[var(--primary)] font-mono text-sm mb-2">get_share_price</div>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              On-chain oracle. Lending protocols can value Syntx shares as collateral without external oracles.
+            </p>
+          </div>
+          <div className="panel p-4">
+            <div className="text-[var(--primary)] font-mono text-sm mb-2">deposit_standalone</div>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              Vault operates without Percolator. Pure SPL transfers + share minting. 7 accounts, no oracle needed.
+            </p>
+          </div>
+        </div>
+      </section>
     </div>
-  );
-}
-
-function VenueBox({ name, type, sub }: { name: string; type: "perp" | "spot"; sub: string }) {
-  return (
-    <div className="px-4 py-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg flex items-center gap-2">
-      <span className={`text-[8px] font-mono uppercase px-1.5 py-0.5 rounded ${
-        type === "perp" ? "bg-blue-950 text-blue-400" : "bg-green-950 text-[var(--green)]"
-      }`}>
-        {type}
-      </span>
-      <div>
-        <div className="text-xs font-medium">{name}</div>
-        <div className="text-[9px] text-[var(--text-dim)]">{sub}</div>
-      </div>
-    </div>
-  );
-}
-
-function CodeBlock({ code }: { code: string }) {
-  return (
-    <pre className="bg-[var(--bg)] border border-[var(--border)] rounded-lg p-3 text-[11px] font-mono text-[var(--text-muted)] leading-relaxed overflow-x-auto">
-      {code}
-    </pre>
   );
 }

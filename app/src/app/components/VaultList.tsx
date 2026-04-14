@@ -62,10 +62,18 @@ const KNOWN_SLABS: Record<string, { name: string; venue: string }> = {
   "B3SbXLH9YBRLuoMkUXyowrpZjpfQDZ7WZeUUt42pnqDQ": { name: "SOL Delta Neutral (v1)", venue: "Percolator" },
 };
 
+// Known vault PDAs — overrides slab-based naming
+const KNOWN_VAULTS: Record<string, { name: string; venue: string }> = {
+  "H2Hvrz4sS4bcBFdD4s1GQ2dWWctfYh35uR2Qqi1H1reH": { name: "SOL Funding Rate", venue: "Percolator" },
+  "93emRqQSrXrUREYys3g4yePJdewCMY56AoMZ4oxvHGWP": { name: "Principal Protected SOL", venue: "Kamino + Jupiter" },
+};
+
 function deriveVaultName(pubkey: string, slab: string, index: number): { name: string; venue: string } {
+  const knownVault = KNOWN_VAULTS[pubkey];
+  if (knownVault) return knownVault;
   const known = KNOWN_SLABS[slab];
   if (known) return known;
-  return { name: `Strategy Vault #${index + 1}`, venue: "Percolator" };
+  return { name: `Strategy Vault #${index + 1}`, venue: "Unknown" };
 }
 
 function parseVaultEntry(pubkey: PublicKey, data: Uint8Array, index: number): VaultEntry | null {

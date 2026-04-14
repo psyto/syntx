@@ -135,6 +135,7 @@ export default function EarnPage() {
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [loading, setLoading] = useState(true);
   const [showHow, setShowHow] = useState(false);
+  const [faucetStatus, setFaucetStatus] = useState<string | null>(null);
   const [positions, setPositions] = useState<PortfolioPosition[]>([]);
   const [totalPortfolioValue, setTotalPortfolioValue] = useState(0);
 
@@ -160,9 +161,11 @@ export default function EarnPage() {
       if (publicKey && data.shareMint) {
         try {
           const ata = await getAssociatedTokenAddress(new PublicKey(data.shareMint), publicKey);
+          console.log("[earn] share ATA:", ata.toBase58(), "for mint:", data.shareMint, "user:", publicKey.toBase58());
           const bal = await connection.getTokenAccountBalance(ata);
+          console.log("[earn] shares:", bal.value.amount);
           setUserShares(BigInt(bal.value.amount));
-        } catch { setUserShares(0n); }
+        } catch (e) { console.error("[earn] share balance error:", e); setUserShares(0n); }
 
         try {
           const colAta = await getAssociatedTokenAddress(new PublicKey(data.collateralMint), publicKey);
@@ -459,9 +462,32 @@ export default function EarnPage() {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium">Deposit</span>
-                      <span className="text-xs text-[var(--text-muted)]">
-                        {(Number(userBalance) / 1_000_000).toFixed(2)} USDC
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-[var(--text-muted)]">
+                          {(Number(userBalance) / 1_000_000).toFixed(2)} USDC
+                        </span>
+                        {userBalance === 0n && (
+                          <button
+                            onClick={async () => {
+                              setFaucetStatus("...");
+                              try {
+                                const r = await fetch("/vaults/api/faucet", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ wallet: publicKey!.toBase58() }),
+                                });
+                                if (r.ok || r.status === 429) {
+                                  setFaucetStatus(null);
+                                  fetchData();
+                                } else { setFaucetStatus("failed"); }
+                              } catch { setFaucetStatus("failed"); }
+                            }}
+                            className="text-[10px] text-[var(--primary)] hover:underline"
+                          >
+                            {faucetStatus || "Get test USDC"}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="flex gap-2 mb-2">
                       <input
@@ -516,7 +542,7 @@ export default function EarnPage() {
                         <button
                           onClick={handleWithdraw}
                           disabled={!withdrawAmt || !!txStatus}
-                          className="w-full h-11 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--primary)] text-sm font-medium disabled:opacity-40 transition"
+                          className="w-full h-11 rounded-lg bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-sm font-medium disabled:opacity-40 transition"
                         >
                           {txStatus || "Withdraw"}
                         </button>
