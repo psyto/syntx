@@ -64,7 +64,8 @@ const KNOWN_SLABS: Record<string, { name: string; venue: string }> = {
 
 // Known vault PDAs — overrides slab-based naming
 const KNOWN_VAULTS: Record<string, { name: string; venue: string }> = {
-  "H2Hvrz4sS4bcBFdD4s1GQ2dWWctfYh35uR2Qqi1H1reH": { name: "SOL Funding Rate", venue: "Percolator" },
+  "H2Hvrz4sS4bcBFdD4s1GQ2dWWctfYh35uR2Qqi1H1reH": { name: "SOL Funding Rate (v1)", venue: "Percolator" },
+  "HYicfqAdnPFhzYKFJTVkSSBp8nFwQCqj64MvYKzSJPVw": { name: "SOL Funding Rate", venue: "Percolator" },
   "93emRqQSrXrUREYys3g4yePJdewCMY56AoMZ4oxvHGWP": { name: "Principal Protected SOL", venue: "Kamino + Jupiter" },
 };
 

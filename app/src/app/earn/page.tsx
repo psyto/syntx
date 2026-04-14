@@ -102,7 +102,8 @@ function parseVaultState(d: Uint8Array): VaultState {
 const VAULT_DISC = new Uint8Array([0xe4, 0xc4, 0x52, 0xa5, 0x62, 0xd2, 0xeb, 0x98]);
 
 const KNOWN_VAULTS: Record<string, string> = {
-  "H2Hvrz4sS4bcBFdD4s1GQ2dWWctfYh35uR2Qqi1H1reH": "SOL Funding Rate",
+  "H2Hvrz4sS4bcBFdD4s1GQ2dWWctfYh35uR2Qqi1H1reH": "SOL Funding Rate (v1)",
+  "HYicfqAdnPFhzYKFJTVkSSBp8nFwQCqj64MvYKzSJPVw": "SOL Funding Rate",
   [STRUCTURED_VAULT_PDA]: "Principal Protected SOL",
 };
 
