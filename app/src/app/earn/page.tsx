@@ -261,6 +261,16 @@ export default function EarnPage() {
         data: data as any,
       }));
 
+      // Simulate first to catch errors before wallet popup
+      setTxStatus("Simulating...");
+      tx.feePayer = publicKey;
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      const sim = await connection.simulateTransaction(tx);
+      if (sim.value.err) {
+        console.error("Simulation failed:", sim.value.err, sim.value.logs);
+        throw { message: "Simulation failed", logs: sim.value.logs };
+      }
+
       setTxStatus("Confirm in wallet...");
       const sig = await sendTransaction(tx, connection);
       setTxStatus("Confirming...");
@@ -269,7 +279,11 @@ export default function EarnPage() {
       showToast(`Deposited ${depositAmt} USDC`, "success");
       fetchData();
     } catch (e: any) {
-      setTxError(e?.message?.slice(0, 300) || "Transaction failed");
+      console.error("Deposit error:", e);
+      const logs = e?.logs || e?.transactionLogs || [];
+      if (logs.length > 0) console.error("TX Logs:", logs.join("\n"));
+      const msg = logs.length > 0 ? logs.join(" | ") : (e?.message || "Transaction failed");
+      setTxError(msg.slice(0, 500));
       setTxStatus(null);
       showToast("Deposit failed", "error");
     }
