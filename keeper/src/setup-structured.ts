@@ -1,8 +1,8 @@
 /**
- * Deploy a Structured Product vault on devnet.
+ * Deploy a Standalone Structured Product vault on devnet.
  *
- * Uses the existing Percolator slab + collateral mint from the funding rate vault,
- * but with a separate manager keypair to get a different vault PDA.
+ * Uses init_vault_standalone — no Percolator dependency.
+ * The vault is immediately ready for deposits after creation.
  *
  * Usage: npx ts-node src/setup-structured.ts
  *        npx ts-node src/setup-structured.ts --resume
@@ -15,7 +15,6 @@ import {
   Transaction,
   TransactionInstruction,
   SystemProgram,
-  SYSVAR_CLOCK_PUBKEY,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import {
@@ -28,15 +27,13 @@ import * as fs from "fs";
 import { disc } from "./abi";
 
 // ============================================================
-// Config — reuse existing infra
+// Config
 // ============================================================
 
 const RPC_URL = "https://api.devnet.solana.com";
 const SYNTX_PROGRAM_ID = new PublicKey("53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V");
-const PERCOLATOR_PROGRAM_ID = new PublicKey("Edq18N2pdT3Sz9EukbZe4YsQkvmxvmmkUL1KHpv96xJF");
 
-// Reuse from existing funding rate vault deployment
-const EXISTING_SLAB = new PublicKey("9Gh75RYAkN5wD97HtHo6Za6RwPReZSAcgNxtbvYy2jDF");
+// Reuse the existing test USDC mint (same as funding rate vault)
 const EXISTING_COLLATERAL_MINT = new PublicKey("AhGQVQm7HudP6eWekMDLZiZogwvnMPFGL5owZCHFGquC");
 
 // Phoenix devnet SOL/USDC market
@@ -76,7 +73,7 @@ async function main() {
   if (resume && fs.existsSync(RESUME_FILE)) {
     const existing = JSON.parse(fs.readFileSync(RESUME_FILE, "utf-8"));
     console.log("\nResuming from", RESUME_FILE);
-    console.log("Vault PDA:", existing.vaultPda);
+    await fundManager(connection, admin, new PublicKey(existing.collateralMint));
     printEnv(existing);
     return;
   }
@@ -91,18 +88,17 @@ async function main() {
     manager = Keypair.generate();
     fs.writeFileSync(MANAGER_KEY_FILE, JSON.stringify(Array.from(manager.secretKey)));
     console.log("Generated new manager:", manager.publicKey.toBase58());
-    console.log("Saved to", MANAGER_KEY_FILE);
   }
 
-  // Fund manager with SOL for transactions
+  // Fund manager with SOL
   const managerBalance = await connection.getBalance(manager.publicKey);
   if (managerBalance < 0.1 * 1e9) {
-    console.log("Funding manager with 0.5 SOL...");
+    console.log("Funding manager with 0.3 SOL...");
     const tx = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: admin.publicKey,
         toPubkey: manager.publicKey,
-        lamports: 0.5 * 1e9,
+        lamports: 0.3 * 1e9,
       }),
     );
     await sendAndConfirmTransaction(connection, tx, [admin]);
@@ -110,11 +106,9 @@ async function main() {
   }
 
   const collateralMint = EXISTING_COLLATERAL_MINT;
-  const slabPubkey = EXISTING_SLAB;
   console.log("Collateral mint:", collateralMint.toBase58());
-  console.log("Percolator slab:", slabPubkey.toBase58());
 
-  // --- Step 2: Derive vault PDA (different from funding rate vault due to different manager) ---
+  // --- Step 2: Derive vault PDA ---
   const [vaultPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("vault"), collateralMint.toBuffer(), manager.publicKey.toBuffer()],
     SYNTX_PROGRAM_ID,
@@ -126,12 +120,14 @@ async function main() {
   const vaultInfo = await connection.getAccountInfo(vaultPda);
   if (vaultInfo) {
     console.log("Vault already exists!");
-    const config = JSON.parse(fs.readFileSync(RESUME_FILE, "utf-8"));
-    printEnv(config);
+    if (fs.existsSync(RESUME_FILE)) {
+      const config = JSON.parse(fs.readFileSync(RESUME_FILE, "utf-8"));
+      printEnv(config);
+    }
     return;
   }
 
-  // --- Step 3: Create share mint (manager is NOT the authority — vault PDA is) ---
+  // --- Step 3: Create share mint ---
   console.log("\n=== Step 3: Create share mint ===");
   const shareMint = await createMint(connection, admin, vaultPda, null, 6);
   console.log("Share mint:", shareMint.toBase58());
@@ -142,13 +138,10 @@ async function main() {
   );
   console.log("Vault collateral ATA:", vaultCollateral.address.toBase58());
 
-  // Mint fee payment tokens to vault
-  await mintTo(connection, admin, collateralMint, vaultCollateral.address, admin, 10000);
-
-  // --- Step 5: InitVault (manager signs) ---
-  console.log("\n=== Step 4: InitVault ===");
+  // --- Step 5: InitVaultStandalone (no Percolator!) ---
+  console.log("\n=== Step 4: InitVaultStandalone ===");
   const initVaultData = Buffer.concat([
-    Buffer.from(disc("init_vault")),
+    Buffer.from(disc("init_vault_standalone")),
     bufU16(1000), // performance_fee_bps (10%)
     bufU16(100),  // management_fee_bps (1%)
     bufU64(100_000_000_000n), // deposit_cap (100K USDC)
@@ -162,88 +155,26 @@ async function main() {
       { pubkey: vaultPda, isSigner: false, isWritable: true },
       { pubkey: collateralMint, isSigner: false, isWritable: false },
       { pubkey: shareMint, isSigner: false, isWritable: false },
-      { pubkey: slabPubkey, isSigner: false, isWritable: false },
-      { pubkey: PERCOLATOR_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     data: initVaultData,
   });
 
-  const tx3 = new Transaction().add(initVaultIx);
-  const sig3 = await sendAndConfirmTransaction(connection, tx3, [manager]);
-  console.log("InitVault tx:", sig3);
+  const tx = new Transaction().add(initVaultIx);
+  const sig = await sendAndConfirmTransaction(connection, tx, [manager]);
+  console.log("InitVaultStandalone tx:", sig);
+  console.log("Vault is immediately ready for deposits!");
 
-  // --- Step 6: RegisterOnPercolator ---
-  console.log("\n=== Step 5: RegisterOnPercolator ===");
-  const [percVaultPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("vault"), slabPubkey.toBuffer()],
-    PERCOLATOR_PROGRAM_ID,
-  );
-  const percVaultAta = await getOrCreateAssociatedTokenAccount(
-    connection, admin, collateralMint, percVaultPda, true,
-  );
-
-  const registerData = Buffer.concat([
-    Buffer.from(disc("register_on_percolator")),
-    bufU64(1000n),
-  ]);
-
-  const registerIx = new TransactionInstruction({
-    programId: SYNTX_PROGRAM_ID,
-    keys: [
-      { pubkey: manager.publicKey, isSigner: true, isWritable: false },
-      { pubkey: vaultPda, isSigner: false, isWritable: true },
-      { pubkey: vaultCollateral.address, isSigner: false, isWritable: true },
-      { pubkey: slabPubkey, isSigner: false, isWritable: true },
-      { pubkey: percVaultAta.address, isSigner: false, isWritable: true },
-      { pubkey: PERCOLATOR_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
-    ],
-    data: registerData,
-  });
-
-  const tx4 = new Transaction().add(registerIx);
-  const sig4 = await sendAndConfirmTransaction(connection, tx4, [manager]);
-  console.log("RegisterOnPercolator tx:", sig4);
-
-  // --- Step 7: SetPercolatorIdx ---
-  console.log("\n=== Step 6: SetPercolatorIdx ===");
-  // Second user on this slab (funding rate vault = idx 0, structured = idx 1)
-  const setIdxData = Buffer.concat([
-    Buffer.from(disc("set_percolator_idx")),
-    bufU16(1), // index 1
-  ]);
-
-  const setIdxIx = new TransactionInstruction({
-    programId: SYNTX_PROGRAM_ID,
-    keys: [
-      { pubkey: manager.publicKey, isSigner: true, isWritable: false },
-      { pubkey: vaultPda, isSigner: false, isWritable: true },
-    ],
-    data: setIdxData,
-  });
-
-  const tx5 = new Transaction().add(setIdxIx);
-  const sig5 = await sendAndConfirmTransaction(connection, tx5, [manager]);
-  console.log("SetPercolatorIdx tx:", sig5);
-
-  // --- Step 8: Fund manager with test USDC ---
-  console.log("\n=== Step 7: Fund manager with test USDC ===");
-  const managerUsdcAta = await getOrCreateAssociatedTokenAccount(
-    connection, admin, collateralMint, manager.publicKey,
-  );
-  await mintTo(connection, admin, collateralMint, managerUsdcAta.address, admin, DEMO_USDC_AMOUNT);
-  console.log(`Minted ${DEMO_USDC_AMOUNT / 1_000_000} test USDC to manager`);
+  // --- Step 6: Fund manager with test USDC ---
+  await fundManager(connection, admin, collateralMint);
 
   // --- Save config ---
   const config = {
     network: "devnet",
-    type: "structured-product",
+    type: "standalone-structured-product",
     createdAt: new Date().toISOString(),
     syntxProgramId: SYNTX_PROGRAM_ID.toBase58(),
-    percolatorProgramId: PERCOLATOR_PROGRAM_ID.toBase58(),
-    slab: slabPubkey.toBase58(),
+    standalone: true,
     collateralMint: collateralMint.toBase58(),
     vaultPda: vaultPda.toBase58(),
     shareMint: shareMint.toBase58(),
@@ -251,13 +182,21 @@ async function main() {
     managerPubkey: manager.publicKey.toBase58(),
     managerKeypairFile: MANAGER_KEY_FILE,
     phoenixMarket: PHOENIX_DEVNET_MARKET.toBase58(),
-    percolatorUserIdx: 1,
   };
 
   fs.writeFileSync(RESUME_FILE, JSON.stringify(config, null, 2));
   console.log("\nConfig saved to", RESUME_FILE);
 
   printEnv(config);
+}
+
+async function fundManager(connection: Connection, admin: Keypair, mint: PublicKey) {
+  console.log("\n=== Fund manager with test USDC ===");
+  const managerAta = await getOrCreateAssociatedTokenAccount(
+    connection, admin, mint, admin.publicKey,
+  );
+  await mintTo(connection, admin, mint, managerAta.address, admin, DEMO_USDC_AMOUNT);
+  console.log(`Minted ${DEMO_USDC_AMOUNT / 1_000_000} test USDC to manager`);
 }
 
 function printEnv(config: any) {
@@ -270,8 +209,6 @@ function printEnv(config: any) {
     `SOLANA_RPC_URL=${RPC_URL}`,
     `MANAGER_KEYPAIR_PATH=${managerPath}`,
     `SYNTX_PROGRAM_ID=${config.syntxProgramId}`,
-    `PERCOLATOR_PROGRAM_ID=${config.percolatorProgramId}`,
-    `PERCOLATOR_SLAB=${config.slab}`,
     `VAULT_PDA=${config.vaultPda}`,
     `COLLATERAL_MINT=${config.collateralMint}`,
     `CRANK_INTERVAL_MS=30000`,
@@ -291,7 +228,7 @@ function printEnv(config: any) {
   console.log(`NEXT_PUBLIC_STRUCTURED_VAULT_PDA=${config.vaultPda}`);
   console.log(`NEXT_PUBLIC_STRUCTURED_COLLATERAL_MINT=${config.collateralMint}`);
   console.log(`NEXT_PUBLIC_STRUCTURED_SHARE_MINT=${config.shareMint}`);
-  console.log(`NEXT_PUBLIC_STRUCTURED_SLAB=${config.slab}`);
+  console.log(`NEXT_PUBLIC_STRUCTURED_STANDALONE=true`);
 
   console.log("\nTo run keeper: cp .env.structured .env && npx ts-node src/index.ts");
 }

@@ -24,13 +24,20 @@ const WalletMultiButton = dynamic(
 
 const SYNTX_PROGRAM_ID = new PublicKey("53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V");
 const PERCOLATOR_PROGRAM_ID = new PublicKey("Edq18N2pdT3Sz9EukbZe4YsQkvmxvmmkUL1KHpv96xJF");
+
+// Percolator-backed vault instructions
 const DISC_DEPOSIT = new Uint8Array([0xf2, 0x23, 0xc6, 0x89, 0x52, 0xe1, 0xf2, 0xb6]);
 const DISC_WITHDRAW = new Uint8Array([0xb7, 0x12, 0x46, 0x9c, 0x94, 0x6d, 0xa1, 0x22]);
+
+// Standalone vault instructions (no Percolator)
+const DISC_DEPOSIT_STANDALONE = new Uint8Array([0x0a, 0xce, 0x85, 0xf6, 0x6b, 0x32, 0x04, 0x37]);
+const DISC_WITHDRAW_STANDALONE = new Uint8Array([0x56, 0x65, 0x25, 0x31, 0x99, 0x49, 0x1e, 0xf3]);
 
 const STRUCTURED_VAULT_PDA = process.env.NEXT_PUBLIC_STRUCTURED_VAULT_PDA || "";
 const STRUCTURED_COLLATERAL_MINT = process.env.NEXT_PUBLIC_STRUCTURED_COLLATERAL_MINT || "";
 const STRUCTURED_SHARE_MINT = process.env.NEXT_PUBLIC_STRUCTURED_SHARE_MINT || "";
-const STRUCTURED_SLAB = process.env.NEXT_PUBLIC_STRUCTURED_SLAB || "9Gh75RYAkN5wD97HtHo6Za6RwPReZSAcgNxtbvYy2jDF";
+const STRUCTURED_STANDALONE = process.env.NEXT_PUBLIC_STRUCTURED_STANDALONE === "true";
+const STRUCTURED_SLAB = process.env.NEXT_PUBLIC_STRUCTURED_SLAB || "";
 
 const PROTECTION_HORIZON_DAYS = 30;
 const MIN_LENDING_PCT = 85;
@@ -222,17 +229,11 @@ export default function EarnPage() {
       const vaultPda = new PublicKey(STRUCTURED_VAULT_PDA);
       const colMint = new PublicKey(STRUCTURED_COLLATERAL_MINT);
       const shrMint = new PublicKey(STRUCTURED_SHARE_MINT);
-      const slabPk = new PublicKey(STRUCTURED_SLAB);
 
       const amount = BigInt(Math.floor(parseFloat(depositAmt) * 1_000_000));
       const userCol = await getAssociatedTokenAddress(colMint, publicKey);
       const userShr = await getAssociatedTokenAddress(shrMint, publicKey);
       const vaultCol = await getAssociatedTokenAddress(colMint, vaultPda, true);
-
-      const [percVaultPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("vault"), slabPk.toBuffer()], PERCOLATOR_PROGRAM_ID,
-      );
-      const percVaultAta = await getAssociatedTokenAddress(colMint, percVaultPda, true);
 
       const tx = new Transaction();
       try { await connection.getTokenAccountBalance(userShr); } catch {
@@ -240,35 +241,49 @@ export default function EarnPage() {
       }
 
       const data = new Uint8Array(16);
-      data.set(DISC_DEPOSIT, 0);
       new DataView(data.buffer).setBigUint64(8, amount, true);
 
-      tx.add(new TransactionInstruction({
-        programId: SYNTX_PROGRAM_ID,
-        keys: [
-          { pubkey: publicKey, isSigner: true, isWritable: true },
-          { pubkey: vaultPda, isSigner: false, isWritable: true },
-          { pubkey: userCol, isSigner: false, isWritable: true },
-          { pubkey: userShr, isSigner: false, isWritable: true },
-          { pubkey: vaultCol, isSigner: false, isWritable: true },
-          { pubkey: shrMint, isSigner: false, isWritable: true },
-          { pubkey: slabPk, isSigner: false, isWritable: true },
-          { pubkey: percVaultAta, isSigner: false, isWritable: true },
-          { pubkey: PERCOLATOR_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
-        ],
-        data: data as any,
-      }));
-
-      // Simulate first to catch errors before wallet popup
-      setTxStatus("Simulating...");
-      tx.feePayer = publicKey;
-      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-      const sim = await connection.simulateTransaction(tx);
-      if (sim.value.err) {
-        console.error("Simulation failed:", sim.value.err, sim.value.logs);
-        throw { message: "Simulation failed", logs: sim.value.logs };
+      if (STRUCTURED_STANDALONE) {
+        // Standalone: no Percolator accounts needed
+        data.set(DISC_DEPOSIT_STANDALONE, 0);
+        tx.add(new TransactionInstruction({
+          programId: SYNTX_PROGRAM_ID,
+          keys: [
+            { pubkey: publicKey, isSigner: true, isWritable: true },
+            { pubkey: vaultPda, isSigner: false, isWritable: true },
+            { pubkey: userCol, isSigner: false, isWritable: true },
+            { pubkey: userShr, isSigner: false, isWritable: true },
+            { pubkey: vaultCol, isSigner: false, isWritable: true },
+            { pubkey: shrMint, isSigner: false, isWritable: true },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+          ],
+          data: data as any,
+        }));
+      } else {
+        // Percolator-backed vault
+        const slabPk = new PublicKey(STRUCTURED_SLAB);
+        data.set(DISC_DEPOSIT, 0);
+        const [percVaultPda] = PublicKey.findProgramAddressSync(
+          [Buffer.from("vault"), slabPk.toBuffer()], PERCOLATOR_PROGRAM_ID,
+        );
+        const percVaultAta = await getAssociatedTokenAddress(colMint, percVaultPda, true);
+        tx.add(new TransactionInstruction({
+          programId: SYNTX_PROGRAM_ID,
+          keys: [
+            { pubkey: publicKey, isSigner: true, isWritable: true },
+            { pubkey: vaultPda, isSigner: false, isWritable: true },
+            { pubkey: userCol, isSigner: false, isWritable: true },
+            { pubkey: userShr, isSigner: false, isWritable: true },
+            { pubkey: vaultCol, isSigner: false, isWritable: true },
+            { pubkey: shrMint, isSigner: false, isWritable: true },
+            { pubkey: slabPk, isSigner: false, isWritable: true },
+            { pubkey: percVaultAta, isSigner: false, isWritable: true },
+            { pubkey: PERCOLATOR_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
+          ],
+          data: data as any,
+        }));
       }
 
       setTxStatus("Confirm in wallet...");
@@ -291,15 +306,19 @@ export default function EarnPage() {
 
   const handleWithdraw = async () => {
     if (!withdrawAmt || !publicKey || !hasVault || !vault) return;
-    setTxStatus("Refreshing oracle..."); setTxError(null);
-    try {
-      try { await fetch("/vaults/api/push-oracle", { method: "POST" }); } catch {}
+    setTxError(null);
 
-      setTxStatus("Building...");
+    // Standalone vaults don't need oracle refresh
+    if (!STRUCTURED_STANDALONE) {
+      setTxStatus("Refreshing oracle...");
+      try { await fetch("/vaults/api/push-oracle", { method: "POST" }); } catch {}
+    }
+
+    setTxStatus("Building...");
+    try {
       const vaultPda = new PublicKey(STRUCTURED_VAULT_PDA);
       const colMint = new PublicKey(STRUCTURED_COLLATERAL_MINT);
       const shrMint = new PublicKey(STRUCTURED_SHARE_MINT);
-      const slabPk = new PublicKey(STRUCTURED_SLAB);
 
       const withdrawUsd = parseFloat(withdrawAmt);
       let shares: bigint;
@@ -314,32 +333,52 @@ export default function EarnPage() {
       const userCol = await getAssociatedTokenAddress(colMint, publicKey);
       const userShr = await getAssociatedTokenAddress(shrMint, publicKey);
       const vaultCol = await getAssociatedTokenAddress(colMint, vaultPda, true);
-      const [percVaultPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("vault"), slabPk.toBuffer()], PERCOLATOR_PROGRAM_ID,
-      );
-      const percVaultAta = await getAssociatedTokenAddress(colMint, percVaultPda, true);
 
       const data = new Uint8Array(16);
-      data.set(DISC_WITHDRAW, 0);
       new DataView(data.buffer).setBigUint64(8, shares, true);
 
-      const tx = new Transaction().add(new TransactionInstruction({
-        programId: SYNTX_PROGRAM_ID,
-        keys: [
-          { pubkey: publicKey, isSigner: true, isWritable: true },
-          { pubkey: vaultPda, isSigner: false, isWritable: true },
-          { pubkey: userCol, isSigner: false, isWritable: true },
-          { pubkey: userShr, isSigner: false, isWritable: true },
-          { pubkey: vaultCol, isSigner: false, isWritable: true },
-          { pubkey: shrMint, isSigner: false, isWritable: true },
-          { pubkey: slabPk, isSigner: false, isWritable: true },
-          { pubkey: percVaultAta, isSigner: false, isWritable: true },
-          { pubkey: PERCOLATOR_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
-        ],
-        data: data as any,
-      }));
+      const tx = new Transaction();
+
+      if (STRUCTURED_STANDALONE) {
+        data.set(DISC_WITHDRAW_STANDALONE, 0);
+        tx.add(new TransactionInstruction({
+          programId: SYNTX_PROGRAM_ID,
+          keys: [
+            { pubkey: publicKey, isSigner: true, isWritable: true },
+            { pubkey: vaultPda, isSigner: false, isWritable: true },
+            { pubkey: userShr, isSigner: false, isWritable: true },
+            { pubkey: userCol, isSigner: false, isWritable: true },
+            { pubkey: vaultCol, isSigner: false, isWritable: true },
+            { pubkey: shrMint, isSigner: false, isWritable: true },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+          ],
+          data: data as any,
+        }));
+      } else {
+        const slabPk = new PublicKey(STRUCTURED_SLAB);
+        data.set(DISC_WITHDRAW, 0);
+        const [percVaultPda] = PublicKey.findProgramAddressSync(
+          [Buffer.from("vault"), slabPk.toBuffer()], PERCOLATOR_PROGRAM_ID,
+        );
+        const percVaultAta = await getAssociatedTokenAddress(colMint, percVaultPda, true);
+        tx.add(new TransactionInstruction({
+          programId: SYNTX_PROGRAM_ID,
+          keys: [
+            { pubkey: publicKey, isSigner: true, isWritable: true },
+            { pubkey: vaultPda, isSigner: false, isWritable: true },
+            { pubkey: userCol, isSigner: false, isWritable: true },
+            { pubkey: userShr, isSigner: false, isWritable: true },
+            { pubkey: vaultCol, isSigner: false, isWritable: true },
+            { pubkey: shrMint, isSigner: false, isWritable: true },
+            { pubkey: slabPk, isSigner: false, isWritable: true },
+            { pubkey: percVaultAta, isSigner: false, isWritable: true },
+            { pubkey: PERCOLATOR_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
+          ],
+          data: data as any,
+        }));
+      }
 
       setTxStatus("Confirm in wallet...");
       const sig = await sendTransaction(tx, connection);
