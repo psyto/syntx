@@ -67,9 +67,9 @@
 
 ### Section 5: Close (20s)
 
-"I lost my composable perp stack when Drift was exploited. So I built one that can't die with a single venue. Fifteen instructions, twenty-nine tests, four venue adapters, three architectures. Syntx — composable exchange-agnostic vaults on Solana."
+"I lost my composable perp stack when Drift was exploited. So I built one that can't die with a single venue. Fifteen instructions, thirty-two tests, four venue adapters, three architectures. Syntx — composable exchange-agnostic vaults on Solana."
 
-"Fifteen instructions. Twenty-nine tests. Four venue adapters across three architectures. 48-hour timelock. Immutable circuit breaker floor. Full SDK. Live on devnet. Syntx — composable exchange-agnostic vaults on Solana."
+"Fifteen instructions. Thirty-two tests. Four venue adapters across three architectures. 48-hour timelock. Immutable circuit breaker floor. Full SDK. Live on devnet. Syntx — composable exchange-agnostic vaults on Solana."
 
 ---
 
@@ -103,7 +103,7 @@
 
 ### What We Built (20s)
 
-"Live on devnet. Fifteen Anchor instructions. Twenty-nine tests. Four venue adapters across three architectures. Forty-eight hour timelock on manager transfer — we studied the Drift exploit and hardened before anyone asked. Immutable circuit breaker floor. Complete SDK. Five frontend pages."
+"Live on devnet. Fifteen Anchor instructions. Thirty-two tests. Four venue adapters across three architectures. Forty-eight hour timelock on manager transfer — we studied the Drift exploit and hardened before anyone asked. Immutable circuit breaker floor. Complete SDK. Five frontend pages."
 
 ### The Ask (15s)
 

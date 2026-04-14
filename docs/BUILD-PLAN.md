@@ -13,7 +13,7 @@ Deposit USDC, earn 8-15% APY from funding rate yield. Capital routes across Perc
 | Phase | Status | What was built |
 |---|---|---|
 | 0. Foundation | Done | Anchor scaffold, Percolator CPI integration |
-| 1. Core Vault | Done | 15 instructions, 29 tests passing |
+| 1. Core Vault | Done | 15 instructions, 32 tests passing |
 | 2. Keeper | Done | Funding rate strategy, running live on devnet |
 | 3. Fees | Done | Performance + management fees via share dilution |
 | 4. SDK + Frontend | Done | TypeScript SDK (complete), 5-page Next.js app |
@@ -32,7 +32,7 @@ Deposit USDC, earn 8-15% APY from funding rate yield. Capital routes across Perc
 
 ## What's Built
 
-### Vault Program (15 instructions, 29 tests)
+### Vault Program (15 instructions, 32 tests)
 
 Core vault:
 - init_vault, register_on_percolator, set_percolator_idx
@@ -59,7 +59,7 @@ Security:
 - VenueRouter — scores venues by funding rate, liquidity, insurance; routes to best
 - 3 architectures covered: slab-based (Percolator), CLOB (Phoenix), oracle-based AMM (Jupiter Perps)
 
-### Tests (29 passing)
+### Tests (32 passing)
 
 Positive (16):
 - Full lifecycle (init → register → deposit → trade → withdraw)
@@ -70,13 +70,15 @@ Positive (16):
 - Manager crank (funding settlement)
 - Multi-user deposit with share price verification
 - Circuit breaker configuration (above minimum floor)
+- Circuit breaker state persisted on-chain (drawdown, peak_equity, max_cpi)
 - Share price on fresh vault
 - Deposit after unpause cycle
 
-Negative (13):
+Negative (16):
 - Unauthorized trade, pause, fees, manager proposal, circuit breaker (5 tests)
 - Deposit when paused, deposit over cap, zero deposit (3 tests)
-- Insufficient shares, withdraw over balance (2 tests)
+- Withdraw when paused, insufficient shares, over balance (3 tests)
+- Trade when paused (1 test)
 - Double init rejected (1 test)
 - Circuit breaker below immutable minimum rejected (1 test)
 - CPI trade rejected when caller not whitelisted (1 test)
@@ -113,7 +115,7 @@ Negative (13):
 
 | Risk | Status | Mitigation |
 |---|---|---|
-| Vault program unaudited | **Critical** | 29 tests pass but tests != audit. Must audit before mainnet. |
+| Vault program unaudited | **Critical** | 32 tests pass but tests != audit. Must audit before mainnet. |
 | Single manager key (SPOF) | **Mitigated** | 48h timelock on manager transfer, immutable circuit breaker floor. Squads multisig planned post-audit. |
 | Manager disables protections | **Mitigated** | min_drawdown_bps set at vault creation, cannot be reduced — ever. |
 | Composability = vulnerability propagation | Partially addressed | CPI whitelist + size limits reduce surface, don't eliminate it |

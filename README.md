@@ -116,7 +116,7 @@ Syntx is an **ecosystem for developers**. If Solana can't compose its perp proto
 
 **Status:** Full end-to-end working on devnet — faucet, create vault, deposit, withdraw, one-click compose. All from the browser.
 
-**Honest assessment:** Syntx is unaudited. 29 tests pass but tests != audit. Security audit (~$50-100K) is required before mainnet.
+**Honest assessment:** Syntx is unaudited. 32 tests pass but tests != audit. Security audit (~$50-100K) is required before mainnet.
 
 ## Composability Recipes
 
@@ -170,7 +170,7 @@ cd keeper && npx ts-node src/setup-devnet.ts
 syntx/
 ├── programs/syntx-vault/
 │   ├── src/lib.rs              # Vault program (15 instructions, timelock, immutable floor)
-│   └── tests/integration.rs    # 27 LiteSVM tests
+│   └── tests/integration.rs    # 32 LiteSVM tests
 ├── keeper/
 │   └── src/
 │       ├── venues/

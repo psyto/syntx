@@ -12,7 +12,7 @@ Deposit USDC, earn 8-15% APY from funding rate yield. Capital routes across Perc
 
 Born from frustration: Drift was the only composable perp venue on Solana. When it was exploited, single-venue vaults lost everything. Syntx is the vault layer that survives any single DEX failing.
 
-15 instructions, 29 tests, live on devnet.
+15 instructions, 32 tests, live on devnet.
 
 (497 chars)
 
@@ -74,7 +74,7 @@ Note: Devnet RPC can be slow. If a page shows an error, click Retry. The faucet 
 
 ## Important GitHub repo context (500 chars)
 
-The repo contains the complete Syntx product: Anchor vault program (15 instructions, 29 tests), keeper with 4 venue adapters (Percolator, Phoenix, Jupiter Perps, VenueRouter) spanning 3 architectures, TypeScript SDK, and Next.js frontend.
+The repo contains the complete Syntx product: Anchor vault program (15 instructions, 32 tests), keeper with 4 venue adapters (Percolator, Phoenix, Jupiter Perps, VenueRouter) spanning 3 architectures, TypeScript SDK, and Next.js frontend.
 
 The VenueAdapter interface is the core innovation — adding a new DEX requires implementing 6 methods. See examples/cpi-caller for CPI integration and examples/venue-adapter for a DriftAdapter skeleton.
 
