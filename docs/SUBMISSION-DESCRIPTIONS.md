@@ -124,9 +124,11 @@ Milestones:
 - SDK: complete (buildDepositTx, buildWithdrawTx, all 15 instruction builders)
 - Examples: CPI caller (Anchor + TypeScript), venue adapter skeleton (Drift)
 
-No external users yet — pre-mainnet. Strategy logic is battle-tested: Yogi (Drift mainnet) and Kodiak (Hyperliquid mainnet) run the same core logic in production.
+Full end-to-end working on devnet: faucet → create vault → deposit → withdraw → one-click compose. All from the browser, no CLI needed.
 
-Pre-mainnet blockers: security audit (~$50-100K), Squads multisig. Shipping unaudited to mainnet would be irresponsible.
+Strategy logic is battle-tested: Yogi (Drift mainnet) and Kodiak (Hyperliquid mainnet) run the same core logic in production.
+
+Pre-mainnet blockers: security audit (~$50-100K), Squads multisig.
 
 (984 chars)
 

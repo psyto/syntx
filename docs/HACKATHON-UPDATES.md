@@ -25,6 +25,11 @@
 - README rewrite + business plan
 - CPI examples + venue adapter skeleton
 - CONTRIBUTING.md, JSDoc, error boundaries
+- Full end-to-end working: faucet → create vault → deposit → withdraw
+- Devnet faucet (100 USDC + 0.05 SOL in one click)
+- Create Vault from browser (4 wallet confirmations)
+- Withdrawal fix: SetOracleAuthority + PushOraclePrice API
+- One-click compose: faucet + deposit in one flow
 
 ---
 

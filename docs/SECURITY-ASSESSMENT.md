@@ -13,7 +13,7 @@ This event is why Syntx exists — and why we proactively studied the exploit to
 | 2-of-5 multisig, zero timelock | Attacker pre-signed with 2 signers, executed instantly | **Different** — single manager key, no multisig |
 | Durable nonce exploitation | Pre-signed TX held indefinitely until optimal moment | **Not exposed** — no multisig approval pipeline |
 | Fake collateral (CVT) creation | Admin created worthless token as collateral | **Not exposed** — vault trades on existing Percolator slabs |
-| Oracle manipulation | Admin switched to attacker-controlled oracle | **Partially exposed** — Percolator slab admin controls oracle |
+| Oracle manipulation | Admin switched to attacker-controlled oracle | **Mitigated** — Percolator requires admin to SetOracleAuthority + PushOraclePrice; price is clamped by circuit breaker |
 | Withdrawal limit relaxation | Admin raised limits before draining | **Mitigated** — `min_drawdown_bps` is immutable floor, manager cannot disable |
 | Admin transfer | Ownership transferred with no delay | **Mitigated** — 48h timelock on `propose_manager` → `execute_manager_transfer` |
 | Staged multi-week operation | Attacker prepared over weeks undetected | **Partially mitigated** — 48h timelock gives detection window; monitoring TBD |

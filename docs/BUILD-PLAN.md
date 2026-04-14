@@ -118,7 +118,7 @@ Negative (13):
 | Manager disables protections | **Mitigated** | min_drawdown_bps set at vault creation, cannot be reduced — ever. |
 | Composability = vulnerability propagation | Partially addressed | CPI whitelist + size limits reduce surface, don't eliminate it |
 | Keeper single point of failure | Known | Retry logic added, but no redundancy |
-| Oracle centralization (devnet) | Known | Push oracle is devnet-only. Mainnet uses Pyth. |
+| Oracle centralization (devnet) | **Working** | SetOracleAuthority + PushOraclePrice via API before withdraw. Mainnet uses Pyth pull oracle. |
 | Audit funding gap | **Critical** | Need $50-100K. Hackathon prize or Solana Foundation grant. |
 
 ## Remaining Work
