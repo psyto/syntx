@@ -1,13 +1,15 @@
 /**
- * Structured Product Keeper — orchestrates lending + spot venues
+ * Structured Product Keeper — Principal-Protected Option via Delta Hedging
  *
- * Unlike the single-venue funding rate keeper, this keeper manages
- * two venues simultaneously:
+ * Orchestrates two venues:
  *   - Lending venue (Kamino): earns yield for principal protection
- *   - Spot venue (Jupiter/Phoenix): SOL exposure for upside
+ *   - Perp venue (Jupiter Perps): delta-hedged position replicating a call option
  *
  * The strategy maintains the invariant that lending yield covers
- * the max possible loss on the spot allocation over the protection horizon.
+ * the max possible loss on the perp margin over the protection horizon.
+ *
+ * Unlike a simple spot allocation, the delta hedge gives asymmetric upside:
+ * the perp position grows when SOL goes up, shrinks when SOL goes down.
  */
 
 import { VenueAdapter } from "./venues";
@@ -18,6 +20,14 @@ import {
   computeAllocation,
   computeRebalance,
 } from "./structured-strategy";
+import {
+  DeltaHedgeConfig,
+  DEFAULT_DELTA_CONFIG,
+  HedgeState,
+  computeHedgeDecision,
+  bsDelta,
+  bsGamma,
+} from "./delta-hedge-strategy";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,33 +44,35 @@ function usdcFmt(raw: bigint): string {
 export interface StructuredKeeperConfig {
   crankIntervalMs: number;
   strategy: StructuredProductConfig;
+  deltaHedge: DeltaHedgeConfig;
 }
 
 /**
  * Run the structured product keeper loop.
- *
- * @param lendingVenue - Kamino adapter for USDC lending
- * @param spotVenue - Phoenix or Jupiter adapter for SOL spot exposure
- * @param totalCapitalFn - Function that returns the vault's total USDC capital
- * @param config - Keeper and strategy configuration
  */
 export async function runStructuredKeeper(
   lendingVenue: KaminoAdapter,
-  spotVenue: VenueAdapter,
+  perpVenue: VenueAdapter,
   totalCapitalFn: () => Promise<bigint>,
   config: StructuredKeeperConfig,
 ): Promise<void> {
-  console.log(`[${ts()}] Structured Product Keeper starting...`);
+  console.log(`[${ts()}] Structured Product Keeper (Delta Hedge) starting...`);
   console.log(`  Lending venue: ${lendingVenue.name}`);
-  console.log(`  Spot venue:    ${spotVenue.name} (${spotVenue.type})`);
+  console.log(`  Perp venue:    ${perpVenue.name} (${perpVenue.type})`);
   console.log(`  Horizon:       ${config.strategy.protectionHorizonDays} days`);
-  console.log(`  Lending floor: ${config.strategy.minLendingPct}%`);
-  console.log(`  Spot cap:      ${config.strategy.maxSpotPct}%`);
-  console.log(`  Rebalance at:  ${config.strategy.rebalanceThresholdPct}% drift`);
+  console.log(`  Leverage:      ${config.deltaHedge.leverage}x`);
+  console.log(`  Impl vol:      ${(config.deltaHedge.impliedVol * 100).toFixed(0)}%`);
+  console.log(`  Rebal thresh:  ${(config.deltaHedge.rebalanceThreshold * 100).toFixed(0)}%`);
   console.log(`  Interval:      ${config.crankIntervalMs}ms\n`);
 
   await lendingVenue.initialize();
-  await spotVenue.initialize();
+  await perpVenue.initialize();
+
+  // Track state across ticks
+  let strikePrice = config.deltaHedge.strikePrice;
+  let startTime = Math.floor(Date.now() / 1000);
+  let lastRebalanceTime = 0;
+  let initialized = false;
 
   let loopCount = 0;
 
@@ -69,7 +81,19 @@ export async function runStructuredKeeper(
     console.log(`\n[${ts()}] === Structured Tick #${loopCount} ===`);
 
     try {
-      await structuredTick(lendingVenue, spotVenue, totalCapitalFn, config.strategy);
+      const result = await structuredTick(
+        lendingVenue,
+        perpVenue,
+        totalCapitalFn,
+        config,
+        { strikePrice, startTime, lastRebalanceTime, initialized },
+      );
+
+      // Update state from tick
+      if (result.strikePrice) strikePrice = result.strikePrice;
+      if (result.startTime) startTime = result.startTime;
+      if (result.lastRebalanceTime) lastRebalanceTime = result.lastRebalanceTime;
+      if (result.initialized) initialized = true;
     } catch (err) {
       console.error(`[${ts()}] Error:`, err instanceof Error ? err.message : err);
     }
@@ -78,75 +102,111 @@ export async function runStructuredKeeper(
   }
 }
 
+interface TickState {
+  strikePrice: number;
+  startTime: number;
+  lastRebalanceTime: number;
+  initialized: boolean;
+}
+
+interface TickResult {
+  strikePrice?: number;
+  startTime?: number;
+  lastRebalanceTime?: number;
+  initialized?: boolean;
+}
+
 async function structuredTick(
   lendingVenue: KaminoAdapter,
-  spotVenue: VenueAdapter,
+  perpVenue: VenueAdapter,
   totalCapitalFn: () => Promise<bigint>,
-  config: StructuredProductConfig,
-): Promise<void> {
+  config: StructuredKeeperConfig,
+  state: TickState,
+): Promise<TickResult> {
+  const result: TickResult = {};
+
   // 1. Read current state from both venues
-  const [lendingPos, spotPos, lendingState, spotState] = await Promise.all([
+  const [lendingPos, perpPos] = await Promise.all([
     lendingVenue.getPosition(),
-    spotVenue.getPosition(),
-    lendingVenue.getVenueState(),
-    spotVenue.getVenueState(),
+    perpVenue.getPosition(),
   ]);
 
   const currentLending = lendingPos?.capital ?? 0n;
-  const currentSpot = spotPos?.capital ?? 0n;
+  const currentPerpSize = perpPos?.size ?? 0n;
+  const perpMargin = perpPos?.capital ?? 0n;
   const totalCapital = await totalCapitalFn();
 
+  // Get SOL price
+  const solPrice = await perpVenue.getPrice("SOL");
   const supplyApy = lendingVenue.supplyApy;
-  const spotPrice = await spotVenue.getPrice("SOL");
 
-  console.log(`  Vault capital: ${usdcFmt(totalCapital)}`);
-  console.log(`  Lending: ${usdcFmt(currentLending)} | Spot: ${usdcFmt(currentSpot)}`);
-  console.log(`  Kamino APY: ${(supplyApy * 100).toFixed(2)}% | SOL: $${spotPrice.toFixed(2)}`);
+  console.log(`  Capital: ${usdcFmt(totalCapital)} | Lending: ${usdcFmt(currentLending)} | Perp margin: ${usdcFmt(perpMargin)}`);
+  console.log(`  SOL: $${solPrice.toFixed(2)} | Kamino APY: ${(supplyApy * 100).toFixed(2)}%`);
 
   // 2. Crank both venues
   await Promise.all([
     lendingVenue.crank(),
-    spotVenue.crank(),
+    perpVenue.crank(),
   ]);
 
-  // 3. Compute allocation and rebalance decision
-  const allocation = computeAllocation(totalCapital, supplyApy, config);
-  console.log(`  Target: ${allocation.lendingPct.toFixed(1)}% lending / ${allocation.spotPct.toFixed(1)}% spot`);
-  console.log(`  Max drawdown at maturity: ${allocation.maxDrawdown.toFixed(2)}% (covered by yield)`);
+  // 3. Initial allocation (first tick only)
+  if (!state.initialized && totalCapital > 0n) {
+    const alloc = computeAllocation(totalCapital, supplyApy, config.strategy);
+    console.log(`  [init] Allocating: ${alloc.lendingPct.toFixed(1)}% lending / ${alloc.spotPct.toFixed(1)}% perp margin`);
 
-  const decision = computeRebalance(
-    totalCapital,
-    currentLending,
-    currentSpot,
-    supplyApy,
-    config,
-  );
-
-  console.log(`  [strategy] ${decision.action}: ${decision.reason}`);
-
-  // 4. Execute rebalance if needed
-  if (decision.action === "hold") return;
-
-  if (decision.action === "initialize" || decision.action === "rebalance") {
-    // Execute lending side first (safer — USDC stays in lending)
-    if (decision.lendingDelta !== 0n) {
-      const lendingAction = decision.lendingDelta > 0n ? "DEPOSIT" : "WITHDRAW";
-      const lendingAbs = decision.lendingDelta > 0n ? decision.lendingDelta : -decision.lendingDelta;
-      console.log(`  [execute] Lending: ${lendingAction} ${usdcFmt(lendingAbs)}`);
-      await lendingVenue.trade(decision.lendingDelta);
+    if (alloc.lendingTarget > 0n) {
+      console.log(`  [init] Lending: DEPOSIT ${usdcFmt(alloc.lendingTarget)}`);
+      await lendingVenue.trade(alloc.lendingTarget);
     }
 
-    // Then execute spot side
-    if (decision.spotDelta !== 0n) {
-      const spotAction = decision.spotDelta > 0n ? "BUY" : "SELL";
-      const spotAbs = decision.spotDelta > 0n ? decision.spotDelta : -decision.spotDelta;
-      console.log(`  [execute] Spot: ${spotAction} ${usdcFmt(spotAbs)} SOL`);
-      await spotVenue.trade(decision.spotDelta);
-    }
+    // Set strike price ATM
+    const strike = state.strikePrice > 0 ? state.strikePrice : solPrice;
+    result.strikePrice = strike;
+    result.startTime = Math.floor(Date.now() / 1000);
+    result.initialized = true;
 
-    // Log final state
-    const newLending = currentLending + decision.lendingDelta;
-    const newSpot = currentSpot + decision.spotDelta;
-    console.log(`  [done] Lending: ${usdcFmt(newLending)} | Spot: ${usdcFmt(newSpot)}`);
+    console.log(`  [init] Strike: $${strike.toFixed(2)} (ATM) | Expiry: ${config.deltaHedge.expiryDays}d`);
+    return result;
   }
+
+  if (!state.initialized) {
+    console.log(`  [wait] No capital deposited yet`);
+    return result;
+  }
+
+  // 4. Compute time remaining
+  const now = Math.floor(Date.now() / 1000);
+  const elapsed = now - state.startTime;
+  const expirySeconds = config.deltaHedge.expiryDays * 86400;
+  const timeRemainingYears = Math.max(0, (expirySeconds - elapsed) / (365 * 86400));
+
+  // 5. Delta hedge decision
+  const hedgeState: HedgeState = {
+    solPrice,
+    strikePrice: state.strikePrice,
+    impliedVol: config.deltaHedge.impliedVol,
+    timeRemainingYears,
+    marginCapital: perpMargin > 0n ? perpMargin : computeAllocation(totalCapital, supplyApy, config.strategy).spotTarget,
+    currentPerpSize: currentPerpSize,
+    lastRebalanceTime: state.lastRebalanceTime,
+  };
+
+  const delta = bsDelta(solPrice, state.strikePrice, config.deltaHedge.impliedVol, timeRemainingYears);
+  const gamma = bsGamma(solPrice, state.strikePrice, config.deltaHedge.impliedVol, timeRemainingYears);
+
+  console.log(`  Delta: ${delta.toFixed(3)} | Gamma: ${gamma.toFixed(5)} | Time: ${(timeRemainingYears * 365).toFixed(1)}d`);
+
+  const decision = computeHedgeDecision(hedgeState, config.deltaHedge);
+  console.log(`  [hedge] ${decision.action}: ${decision.reason}`);
+
+  // 6. Execute rebalance
+  if (decision.action === "rebalance" || decision.action === "close") {
+    if (decision.sizeDelta !== 0n) {
+      console.log(`  [execute] Perp: ${decision.sizeDelta > 0n ? "INCREASE" : "DECREASE"} ${usdcFmt(decision.sizeDelta > 0n ? decision.sizeDelta : -decision.sizeDelta)}`);
+      await perpVenue.trade(decision.sizeDelta);
+      result.lastRebalanceTime = now;
+    }
+  }
+
+  return result;
 }

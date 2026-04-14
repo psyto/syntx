@@ -56,8 +56,14 @@ export interface Config {
   kaminoReserve?: PublicKey;  // defaults to USDC mint
 
   // Structured product-specific (required when strategy=structured)
-  spotVenue?: VenueType;                // which venue for spot leg (phoenix or jupiter)
+  spotVenue?: VenueType;                // which venue for perp/spot leg (jupiter or phoenix)
   protectionHorizonDays?: number;       // defaults to 30
+
+  // Delta hedge parameters
+  strikePrice?: number;                 // 0 = ATM (set at first tick)
+  impliedVol?: number;                  // defaults to 0.80 (80%)
+  leverage?: number;                    // defaults to 5
+  rebalanceThreshold?: number;          // defaults to 0.05 (5%)
 }
 
 export function loadConfig(): Config {
@@ -94,8 +100,12 @@ export function loadConfig(): Config {
   }
 
   if (strategy === "structured") {
-    config.spotVenue = (optionalEnv("SPOT_VENUE") ?? "phoenix") as VenueType;
+    config.spotVenue = (optionalEnv("SPOT_VENUE") ?? "jupiter") as VenueType;
     config.protectionHorizonDays = parseInt(optionalEnv("PROTECTION_HORIZON_DAYS") ?? "30", 10);
+    config.strikePrice = parseFloat(optionalEnv("STRIKE_PRICE") ?? "0");
+    config.impliedVol = parseFloat(optionalEnv("IMPLIED_VOL") ?? "0.80");
+    config.leverage = parseFloat(optionalEnv("LEVERAGE") ?? "5");
+    config.rebalanceThreshold = parseFloat(optionalEnv("REBALANCE_THRESHOLD") ?? "0.05");
   }
 
   return config;

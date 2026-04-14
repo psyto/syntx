@@ -4,6 +4,7 @@ import { loadConfig, Config } from "./config";
 import { runKeeper } from "./keeper";
 import { runStructuredKeeper } from "./structured-keeper";
 import { DEFAULT_CONFIG as DEFAULT_STRUCTURED_CONFIG } from "./structured-strategy";
+import { DEFAULT_DELTA_CONFIG } from "./delta-hedge-strategy";
 import { VenueAdapter, PercolatorAdapter, PhoenixAdapter, JupiterPerpsAdapter, KaminoAdapter, VenueRouter } from "./venues";
 
 function loadKeypair(path: string): Keypair {
@@ -152,6 +153,14 @@ async function main(): Promise<void> {
       strategy: {
         ...DEFAULT_STRUCTURED_CONFIG,
         protectionHorizonDays: config.protectionHorizonDays ?? 30,
+      },
+      deltaHedge: {
+        ...DEFAULT_DELTA_CONFIG,
+        strikePrice: config.strikePrice ?? 0,
+        impliedVol: config.impliedVol ?? 0.80,
+        leverage: config.leverage ?? 5,
+        rebalanceThreshold: config.rebalanceThreshold ?? 0.05,
+        expiryDays: config.protectionHorizonDays ?? 30,
       },
     });
   } else {
