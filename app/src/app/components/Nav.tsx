@@ -17,8 +17,8 @@ const NAV_LINKS = [
 
 const TOOLBAR_LINKS = [
   { href: "/earn", label: "Earn" },
-  { href: "/vaults", label: "Vaults" },
   { href: "/compose", label: "Compose" },
+  { href: "/vaults", label: "Vaults" },
 ];
 
 export default function Nav() {
