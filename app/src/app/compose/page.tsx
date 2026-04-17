@@ -146,10 +146,27 @@ function estimateYield(strategy: Strategy, selectedVenues: Venue[], params: Reco
 
 // --- Component ---
 
+interface IntentResult {
+  intentId: string;
+  side: string;
+  totalSize: number;
+  shielded: boolean;
+  venues: { venue: string; score: number; allocation: number; allocationPct: string; fillPrice: number; status: string }[];
+  status: string;
+  blendedPrice: number;
+}
+
 export default function ComposePage() {
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
   const [selectedVenueIds, setSelectedVenueIds] = useState<Set<string>>(new Set());
   const [params, setParams] = useState<Record<string, string>>({});
+
+  // Intent state
+  const [intentSize, setIntentSize] = useState("100");
+  const [intentSide, setIntentSide] = useState<"long" | "short">("long");
+  const [intentSlippage, setIntentSlippage] = useState("50");
+  const [intentLoading, setIntentLoading] = useState(false);
+  const [intentResult, setIntentResult] = useState<IntentResult | null>(null);
 
   const strategy = STRATEGIES.find(s => s.id === selectedStrategy);
   const selectedVenues = VENUES.filter(v => selectedVenueIds.has(v.id));
@@ -179,15 +196,167 @@ export default function ComposePage() {
     setSelectedVenueIds(new Set());
   };
 
+  const submitIntent = async () => {
+    setIntentLoading(true);
+    setIntentResult(null);
+    try {
+      const res = await fetch("/vaults/api/intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          size: parseFloat(intentSize),
+          side: intentSide,
+          slippageBps: parseInt(intentSlippage),
+        }),
+      });
+      const data = await res.json();
+      setIntentResult(data);
+    } catch (e: any) {
+      console.error("Intent error:", e);
+    } finally {
+      setIntentLoading(false);
+    }
+  };
+
   return (
     <div className="max-w-[1100px] mx-auto px-6 py-10">
       <div className="mb-8">
         <h1 className="text-2xl font-bold mb-2">Compose</h1>
         <p className="text-[var(--text-muted)] max-w-2xl">
-          Build a vault strategy by picking a strategy and venues. Syntx routes across
-          any combination through the VenueAdapter interface.
+          Shielded cross-venue perp execution. Submit a trading intent — Syntx encrypts it,
+          routes across multiple venues for best execution. No one sees your order until it fills.
         </p>
       </div>
+
+      {/* Shielded Intent Submission */}
+      <section className="mb-10">
+        <h2 className="text-xs font-mono uppercase tracking-wider text-[var(--text-muted)] mb-3">
+          Shielded Perp Intent
+        </h2>
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Input form */}
+          <div className="panel p-5 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] text-[var(--text-muted)] block mb-1">Size (USDC)</label>
+                <input
+                  type="number"
+                  value={intentSize}
+                  onChange={(e) => setIntentSize(e.target.value)}
+                  className="w-full h-9 px-2 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)]"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-[var(--text-muted)] block mb-1">Max Slippage</label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    value={intentSlippage}
+                    onChange={(e) => setIntentSlippage(e.target.value)}
+                    className="w-full h-9 px-2 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)]"
+                  />
+                  <span className="text-xs text-[var(--text-muted)]">bps</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIntentSide("long")}
+                className={`flex-1 h-9 rounded-lg text-sm font-medium transition ${
+                  intentSide === "long"
+                    ? "bg-[var(--green)]/20 text-[var(--green)] border border-[var(--green)]/30"
+                    : "bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-muted)]"
+                }`}
+              >
+                Long
+              </button>
+              <button
+                onClick={() => setIntentSide("short")}
+                className={`flex-1 h-9 rounded-lg text-sm font-medium transition ${
+                  intentSide === "short"
+                    ? "bg-[var(--red)]/20 text-[var(--red)] border border-[var(--red)]/30"
+                    : "bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-muted)]"
+                }`}
+              >
+                Short
+              </button>
+            </div>
+            <button
+              onClick={submitIntent}
+              disabled={intentLoading || !intentSize}
+              className="w-full h-10 rounded-lg bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-sm font-medium disabled:opacity-40 transition"
+            >
+              {intentLoading ? "Routing..." : "Submit Shielded Intent"}
+            </button>
+            <div className="text-[10px] text-[var(--text-muted)] text-center">
+              Intent is encrypted → solver decrypts → routes across venues → fills
+            </div>
+          </div>
+
+          {/* Result */}
+          <div className="panel p-5">
+            {!intentResult ? (
+              <div className="py-8 text-center">
+                <div className="text-3xl mb-2">🔒</div>
+                <p className="text-xs text-[var(--text-muted)]">Submit an intent to see cross-venue routing</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className={`text-sm font-bold ${intentResult.side === "long" ? "text-[var(--green)]" : "text-[var(--red)]"}`}>
+                      {intentResult.side.toUpperCase()}
+                    </span>
+                    <span className="text-sm text-[var(--text-muted)] ml-2">${Math.abs(intentResult.totalSize).toFixed(2)}</span>
+                  </div>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-950 text-[var(--green)]">
+                    {intentResult.status.toUpperCase()}
+                  </span>
+                </div>
+
+                <div className="text-xs text-[var(--text-muted)]">
+                  Blended price: <span className="text-[var(--text)] font-mono">${intentResult.blendedPrice.toFixed(4)}</span>
+                </div>
+
+                {/* Venue fills */}
+                <div className="space-y-1.5">
+                  {intentResult.venues.map((v, i) => {
+                    const maxAlloc = Math.max(...intentResult.venues.map(x => Math.abs(x.allocation)));
+                    const pct = maxAlloc > 0 ? Math.abs(v.allocation) / maxAlloc * 100 : 0;
+                    return (
+                      <div key={i} className="text-xs">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="font-medium">{v.venue}</span>
+                          <span className="font-mono text-[var(--text-muted)]">
+                            ${Math.abs(v.allocation).toFixed(2)} ({v.allocationPct}%)
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-[var(--bg)] rounded overflow-hidden">
+                          <div
+                            className="h-full rounded bg-[var(--primary)]/40"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-2 pt-1 text-[10px] text-[var(--text-muted)]">
+                  <span className="w-2 h-2 rounded-full bg-[var(--green)]" />
+                  Shielded — no MEV, no frontrunning
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Strategy Configurator */}
+      <h2 className="text-lg font-semibold mb-4">Vault Strategy Builder</h2>
+      <p className="text-[var(--text-muted)] text-sm mb-6">
+        Configure vault strategies with custom venue combinations. Same VenueAdapter interface powers both intents and vaults.
+      </p>
 
       <div className="grid md:grid-cols-3 gap-6">
         {/* Left column: Strategy + Venues */}

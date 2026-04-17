@@ -5,6 +5,7 @@ import { runKeeper } from "./keeper";
 import { runStructuredKeeper } from "./structured-keeper";
 import { DEFAULT_CONFIG as DEFAULT_STRUCTURED_CONFIG } from "./structured-strategy";
 import { DEFAULT_DELTA_CONFIG } from "./delta-hedge-strategy";
+import { runIntentKeeper } from "./intent-keeper";
 import { VenueAdapter, PercolatorAdapter, PhoenixAdapter, JupiterPerpsAdapter, KaminoAdapter, VenueRouter } from "./venues";
 
 function loadKeypair(path: string): Keypair {
@@ -130,7 +131,45 @@ function createSpotVenue(config: Config, connection: Connection, manager: Keypai
 async function main(): Promise<void> {
   const config = loadConfig();
 
-  if (config.strategy === "structured") {
+  if (config.strategy === "intent") {
+    const connection = new Connection(config.rpcUrl, "confirmed");
+    const manager = loadKeypair(config.managerKeypairPath);
+
+    // Collect all perp venues for intent routing
+    const venues: VenueAdapter[] = [];
+
+    if (config.percolatorProgramId && config.percolatorSlab) {
+      venues.push(new PercolatorAdapter({
+        connection, manager, vaultPda: config.vaultPda,
+        syntxProgramId: config.syntxProgramId,
+        percolatorProgramId: config.percolatorProgramId,
+        percolatorSlab: config.percolatorSlab,
+      }));
+    }
+
+    if (config.jupiterMarket) {
+      venues.push(new JupiterPerpsAdapter({
+        connection, manager, vaultPda: config.vaultPda,
+        market: config.jupiterMarket,
+      }));
+    }
+
+    if (config.phoenixMarket) {
+      venues.push(new PhoenixAdapter({
+        connection, manager, vaultPda: config.vaultPda,
+        marketAddress: config.phoenixMarket,
+      }));
+    }
+
+    if (venues.length === 0) {
+      throw new Error("Intent strategy requires at least one venue configured");
+    }
+
+    await runIntentKeeper(venues, {
+      pollIntervalMs: config.crankIntervalMs,
+      minVenueScore: 10,
+    });
+  } else if (config.strategy === "structured") {
     const connection = new Connection(config.rpcUrl, "confirmed");
     const manager = loadKeypair(config.managerKeypairPath);
 

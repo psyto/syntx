@@ -26,7 +26,7 @@ function optionalPubkey(key: string): PublicKey | undefined {
 
 export type VenueType = "percolator" | "phoenix" | "jupiter" | "kamino" | "router";
 
-export type StrategyType = "funding-rate" | "structured";
+export type StrategyType = "funding-rate" | "structured" | "intent";
 
 export interface Config {
   rpcUrl: string;
