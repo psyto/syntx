@@ -18,28 +18,28 @@ export default function Home() {
       <section className="grid-bg border-b">
         <div className="max-w-[1100px] mx-auto px-6 py-24 md:py-32 flex flex-col items-center text-center">
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-tight mb-6">
-            Composable
+            Shielded Cross-Venue
             <br />
-            Exchange-Agnostic Vaults
+            Perp Execution
             <br />
             <span className="text-[var(--text-muted)]">on Solana</span>
           </h1>
           <p className="text-[var(--text-muted)] text-lg md:text-xl max-w-2xl mb-10">
-            Strategy vaults that route across any perp venue — Percolator, Phoenix, Jupiter Perps.
-            One vault, best execution, full CPI composability.
+            Your trade is encrypted. The solver routes it across Jupiter Perps, Percolator, and Drift
+            for best execution. No one sees your order until it fills.
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Link
-              href="/earn"
+              href="/trade"
               className="h-12 px-8 flex items-center justify-center bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-lg font-medium transition"
             >
-              Start Earning
+              Trade Now
             </Link>
             <Link
-              href="/vaults"
+              href="/earn"
               className="h-12 px-8 flex items-center justify-center bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--border-hover)] rounded-lg font-medium transition"
             >
-              Explore Vaults
+              Earn Yield
             </Link>
           </div>
         </div>

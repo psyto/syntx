@@ -16,9 +16,9 @@ const NAV_LINKS = [
 ];
 
 const TOOLBAR_LINKS = [
+  { href: "/trade", label: "Trade" },
   { href: "/earn", label: "Earn" },
-  { href: "/compose", label: "Compose" },
-  { href: "/vaults", label: "Vaults" },
+  { href: "/build", label: "Build" },
 ];
 
 export default function Nav() {
