@@ -9,7 +9,9 @@ interface IntentResult {
   side: string;
   totalSize: number;
   shielded: boolean;
-  venues: { venue: string; score: number; allocation: number; allocationPct: string; fillPrice: number; status: string }[];
+  realExecution: boolean;
+  txSignature: string;
+  venues: { venue: string; score: number; allocation: number; allocationPct: string; fillPrice: number; status: string; txSignature?: string }[];
   status: string;
   blendedPrice: number;
 }
@@ -192,9 +194,22 @@ export default function TradePage() {
                   </div>
                 </div>
 
+                {intentResult.txSignature && (
+                  <a
+                    href={`https://explorer.solana.com/tx/${intentResult.txSignature}?cluster=custom&customUrl=http%3A%2F%2Flocalhost%3A8899`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-[10px] text-[var(--primary)] hover:underline font-mono truncate"
+                  >
+                    tx: {intentResult.txSignature}
+                  </a>
+                )}
+
                 <div className="flex items-center gap-2 pt-2 text-[10px] text-[var(--text-muted)]">
-                  <span className="w-2 h-2 rounded-full bg-[var(--green)]" />
-                  Shielded — encrypted end-to-end, no MEV, no frontrunning
+                  <span className={`w-2 h-2 rounded-full ${intentResult.realExecution ? "bg-[var(--green)]" : "bg-[var(--orange)]"}`} />
+                  {intentResult.realExecution
+                    ? "Real on-chain execution — TradeCpi through privacy matcher"
+                    : "Shielded — encrypted end-to-end, no MEV, no frontrunning"}
                 </div>
 
                 <button
