@@ -1,25 +1,25 @@
 # Week 2 Voiceover Script (60 seconds)
 
-## [Screen: Trade page — intent form, 0:00–0:10]
+## [Title slide, 0:00–0:08]
 
-"Hi, I'm Hiro. Week 2 of Syntx. The big shift: we're not just a vault protocol anymore. Syntx now does shielded cross-venue perp execution. Your trade is encrypted, routed across multiple venues, and no one sees it until it fills."
+"Hi, I'm Hiro. Week 2 of Syntx at Solana Frontier. The big shift: we're not just a vault protocol anymore. Syntx now does shielded cross-venue perp execution."
 
-## [Screen: Submit intent → venue allocation result, 0:10–0:20]
+## [Trade page — intent form, 0:08–0:18]
 
-"Here's a live intent. I submit a long SOL trade — the solver scores Jupiter Perps, Percolator, and Drift by funding rate and depth, then splits the order proportionally. Best blended price, zero MEV."
+"Submit an encrypted trading intent. The solver scores Jupiter Perps, Percolator, and Drift by funding rate and depth, splits the order across venues, and fills at the best blended price. No one sees your order until it fills. Zero MEV."
 
-## [Screen: Earn page — Principal Protected SOL tab, 0:20–0:30]
+## [Earn page — tabbed vaults, 0:18–0:28]
 
-"We also built structured products. This is a principal-protected SOL vault — Kamino lending earns yield to protect your deposit, while a delta-hedged perp position captures SOL upside. Black-Scholes replication, on-chain."
+"We also built structured products. The principal-protected SOL vault splits capital between Kamino lending and a delta-hedged perp position — Black-Scholes option replication, on-chain. Plus the original funding rate harvest vault."
 
-## [Screen: Earn page — deposit + switch to Funding Rate tab, 0:30–0:40]
+## [Build page — strategy configurator, 0:28–0:38]
 
-"Two vaults live. Deposit USDC, get shares, withdraw anytime. Both use standalone mode — no Percolator dependency on the deposit path. Pure SPL transfers."
+"The Build page lets you compose: pick a strategy, pick venues, configure parameters. Same VenueAdapter interface powers both intents and vaults. Five adapters — Percolator, Jupiter, Phoenix, Kamino, and the VenueRouter."
 
-## [Screen: Build page — strategy configurator, 0:40–0:50]
+## [Terminal — TradeCpi success, 0:38–0:52]
 
-"The Build page lets you compose: pick a strategy, pick venues, configure parameters. Same VenueAdapter interface powers both intents and vaults."
+"And it's real. This is the privacy matcher executing a TradeCpi on localnet. Eight steps — init market, init LP with matcher, push oracle, execute trade. All on-chain. Not simulated."
 
-## [Screen: Terminal — TradeCpi success on localnet, 0:50–0:60]
+## [Closing slide, 0:52–0:60]
 
-"And the privacy matcher works. Real TradeCpi through the on-chain privacy matcher on localnet — not simulated. Encrypted intent, real execution. Next week: demo video, pitch video, final submission."
+"Next week: connect the Trade page to real on-chain execution, deploy to devnet, and submit the demo and pitch videos. Thanks for watching."
