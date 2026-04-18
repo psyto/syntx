@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
         const percProg = new PublicKey(config.percolatorProgramId);
 
         // Push oracle price first
-        const oraclePrice = 138_000_000n; // $138
+        const oraclePrice = BigInt(138_000_000); // $138
         const pushData = Buffer.alloc(17);
         pushData[0] = 17;
         pushData.writeBigUInt64LE(oraclePrice, 1);
@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
 
         // TradeCpi: tag(1)=10, lp_idx(2), user_idx(2), size(16 i128), limit_price(8 u64) = 29 bytes
         // Size is minimal for demo — real sizing needs margin checks
-        const tradeSize = 1_000n; // Tiny size to avoid undercollateralization
+        const tradeSize = BigInt(1_000); // Tiny size to avoid undercollateralization
         const tradeSizeSigned = side === "short" ? -tradeSize : tradeSize;
 
         const tradeData = Buffer.alloc(29);
@@ -180,10 +180,10 @@ export async function POST(req: NextRequest) {
         tradeData.writeUInt16LE(config.userIdx, 3);
         // Write i128 (two's complement)
         let sizeUnsigned = tradeSizeSigned;
-        if (tradeSizeSigned < 0n) sizeUnsigned = (1n << 128n) + tradeSizeSigned;
-        tradeData.writeBigUInt64LE(sizeUnsigned & 0xFFFFFFFFFFFFFFFFn, 5);
-        tradeData.writeBigUInt64LE(sizeUnsigned >> 64n, 13);
-        tradeData.writeBigUInt64LE(0n, 21); // limit_price = 0
+        if (tradeSizeSigned < BigInt(0)) sizeUnsigned = (BigInt(1) << BigInt(128)) + tradeSizeSigned;
+        tradeData.writeBigUInt64LE(sizeUnsigned & BigInt("0xFFFFFFFFFFFFFFFF"), 5);
+        tradeData.writeBigUInt64LE(sizeUnsigned >> BigInt(64), 13);
+        tradeData.writeBigUInt64LE(BigInt(0), 21); // limit_price = 0
 
         const tradeIx = new TransactionInstruction({
           programId: percProg,
