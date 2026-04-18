@@ -1,0 +1,14 @@
+{
+  "network": "devnet",
+  "createdAt": "2026-04-18T04:06:04.005Z",
+  "percolatorProgramId": "AHS7CyMJwSbt6P2oRJxxuG3f2rKETbJjgsiWXCchpkrL",
+  "privacyMatcherId": "BSxqeqa5omHGVX6ayTGSxKEpVUWMXQUBD3pB67eU3ioB",
+  "slab": "BzECMrKBRNZJSbDm4apUUhjgxtG7QSPUVV3mXCvg4Ycs",
+  "collateralMint": "7U8aYDdda9FX9YizYcFypjRpvgeMw1W49mVqYkoQJahb",
+  "percVaultPda": "8EYeFmayrJSvAYZ32QXEb8vdcBFsnLm1q8eCvEoSL4CH",
+  "percVaultAta": "CEP3WhxicZRsHUgmq4f4ZuGw6fMJpYWYSfPKPzW8iwH6",
+  "matcherContext": "8V2Qeq6kZL6tgWWGA6GtEprnYBmfG76Mi6N7zNKiKqyU",
+  "lpIdx": 0,
+  "userIdx": 1,
+  "adminPubkey": "AmSYugrtHAEZi3TDj3HP7qbjY1hw6uv1df1oFDMxKeb1"
+}

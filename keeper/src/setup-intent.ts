@@ -33,7 +33,7 @@ import * as fs from "fs";
 
 const RPC_URL = process.env.SOLANA_RPC_URL || "http://localhost:8899";
 const PERCOLATOR_PROGRAM_ID = new PublicKey("AHS7CyMJwSbt6P2oRJxxuG3f2rKETbJjgsiWXCchpkrL");
-const PRIVACY_MATCHER_ID = new PublicKey("B2GB1aku91TAm2eRs3AAYiC9d5Xo35TdnbdA1mtqYuTG");
+const PRIVACY_MATCHER_ID = new PublicKey(process.env.PRIVACY_MATCHER_ID || "BSxqeqa5omHGVX6ayTGSxKEpVUWMXQUBD3pB67eU3ioB");
 
 // Slab size for MAX_ACCOUNTS=4096 (current build: 1,156,848 bytes)
 const SLAB_LEN = 1_156_848;

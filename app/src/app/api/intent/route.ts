@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
 
     if (config && admin) {
       try {
-        const rpcUrl = process.env.SOLANA_RPC_URL || "http://localhost:8899";
+        const rpcUrl = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
         const connection = new Connection(rpcUrl, "confirmed");
 
         const slab = new PublicKey(config.slab);
