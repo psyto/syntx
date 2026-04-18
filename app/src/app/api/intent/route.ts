@@ -144,6 +144,23 @@ export async function POST(req: NextRequest) {
           data: matcherOracleData,
         });
 
+        // Keeper crank to settle funding and free margin before trading
+        const crankData = Buffer.alloc(4);
+        crankData[0] = 5; // KeeperCrank tag
+        crankData.writeUInt16LE(65535, 1); // permissionless
+        crankData[3] = 0; // allowPanic = false
+
+        const crankIx = new TransactionInstruction({
+          programId: percProg,
+          keys: [
+            { pubkey: admin.publicKey, isSigner: true, isWritable: false },
+            { pubkey: slab, isSigner: false, isWritable: true },
+            { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
+            { pubkey: slab, isSigner: false, isWritable: false }, // oracle (hyperp = slab)
+          ],
+          data: crankData,
+        });
+
         // Derive LP PDA
         const lpIdxBuf = Buffer.alloc(2);
         lpIdxBuf.writeUInt16LE(config.lpIdx, 0);
@@ -153,8 +170,8 @@ export async function POST(req: NextRequest) {
         );
 
         // TradeCpi: tag(1)=10, lp_idx(2), user_idx(2), size(16 i128), limit_price(8 u64) = 29 bytes
-        // Size is in percolator position units, not USDC. Use small size for demo.
-        const tradeSize = BigInt(Math.min(absSize, 10)) * 100_000n; // Cap at 10 units for demo
+        // Size is minimal for demo — real sizing needs margin checks
+        const tradeSize = 1_000n; // Tiny size to avoid undercollateralization
         const tradeSizeSigned = side === "short" ? -tradeSize : tradeSize;
 
         const tradeData = Buffer.alloc(29);
