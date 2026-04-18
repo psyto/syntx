@@ -101,6 +101,9 @@ export async function POST(req: NextRequest) {
     let realTxSig = "";
     let realExecution = false;
 
+    console.log("[intent] config loaded:", !!config, "admin loaded:", !!admin);
+    if (config) console.log("[intent] slab:", config.slab);
+
     if (config && admin) {
       try {
         const rpcUrl = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
@@ -198,7 +201,12 @@ export async function POST(req: NextRequest) {
           percVenue.txSignature = realTxSig;
         }
       } catch (e: any) {
-        console.error("Real execution failed:", e?.message?.slice(0, 200));
+        const errMsg = e?.message?.slice(0, 300) || "Unknown error";
+        console.error("Real execution failed:", errMsg);
+        if (e?.logs) console.error("TX logs:", e.logs.join("\n"));
+        // Include error in response for debugging
+        realTxSig = ""; // ensure empty
+        (allocations as any).__executionError = errMsg;
         // Fall through to simulated fills for other venues
       }
     }
@@ -219,6 +227,9 @@ export async function POST(req: NextRequest) {
       shielded: true,
       realExecution,
       txSignature: realTxSig,
+      executionError: (allocations as any).__executionError || null,
+      configLoaded: !!config,
+      adminLoaded: !!admin,
       venues: allocations,
       status: realExecution ? "filled" : "simulated",
       timestamp: new Date().toISOString(),
