@@ -6,3 +6,4 @@ dist/
 *.so
 test-ledger/
 .DS_Store
+.vercel

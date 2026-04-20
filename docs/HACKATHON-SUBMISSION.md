@@ -13,7 +13,7 @@ Syntx
 
 Syntx — Shielded Cross-Venue Perp Execution on Solana
 
-Syntx encrypts your perp trading intent and routes it across multiple venues (Jupiter Perps, Percolator, Phoenix) for best execution — no MEV, no frontrunning. The same VenueAdapter infrastructure powers structured product vaults: a principal-protected SOL vault (Kamino lending + delta-hedged perps) and a funding rate harvest vault. Privacy matcher on-chain, NaCl box encryption, real TradeCpi execution. 5 venue adapters, standalone vault mode, live on devnet.
+Syntx encrypts your perp trading intent and routes it across multiple venues (Jupiter Perps, Percolator, Phoenix) for best execution — no MEV, no frontrunning. The same VenueAdapter infrastructure powers structured product vaults: a principal-protected SOL vault and a funding rate harvest vault. Privacy matcher on-chain, NaCl box encryption, real TradeCpi execution. 5 venue adapters, standalone vault mode, live on devnet.
 
 ## Project website (public)
 
@@ -23,7 +23,7 @@ https://fabrknt.com/vaults
 
 Syntx is a shielded cross-venue perp execution layer on Solana. Users submit encrypted trading intents — the solver decrypts, scores venues by funding rate and liquidity, splits the order across Jupiter Perps, Percolator, and Phoenix, and fills at the best blended price. No one sees the order before execution. NaCl box encryption (Curve25519-XSalsa20-Poly1305), on-chain privacy matcher, real TradeCpi through Percolator's risk engine.
 
-The same VenueAdapter interface powers structured product vaults. A principal-protected SOL vault splits capital between Kamino lending (yield for protection) and a delta-hedged Jupiter Perps position (Black-Scholes replication). A funding rate harvest vault collects payments across any venue. Both use standalone vault mode — pure SPL transfers, no venue lock-in.
+The same VenueAdapter interface powers structured product vaults. A principal-protected SOL vault splits capital between Kamino lending and a delta-hedged Jupiter Perps position (Black-Scholes replication). A funding rate harvest vault collects payments across any venue. Both use standalone vault mode — pure SPL transfers, no venue lock-in.
 
 Built for: every perp trader who loses to MEV, strategy managers who want venue-agnostic vault infrastructure, and DeFi protocols that need composable perp access via CPI — all in atomic Solana transactions.
 
@@ -34,8 +34,6 @@ Cross-venue spot routing exists (Jupiter, 1inch). Cross-venue perp routing with 
 We run funding rate vaults on Drift (Yogi, mainnet) and Hyperliquid (Kodiak, mainnet). When Drift was exploited, single-venue vaults lost everything overnight. That proved venue lock-in is an existential risk, not a convenience problem.
 
 Why now: Jupiter Perps has deep liquidity and low fees — the execution quality problem that killed Friktion's structured products is solved. Solana is fast enough for delta hedging (400ms slots). The privacy matcher enables encrypted intents without trusted intermediaries. And Solana's perp landscape is fragmenting — Phoenix, Jupiter, Percolator, Drift — creating the market for cross-venue infrastructure.
-
-The timing: Hyperliquid's HIP-4 will bring options to HL. We're building the structured product infrastructure on Solana first, then porting to HL when HIP-4 ships.
 
 ## What technologies are you using or integrating with? 
 
@@ -55,8 +53,6 @@ Complete product: Anchor vault program (standalone + Percolator modes), privacy 
 
 Core innovation: IntentRouter + VenueAdapter pattern — same interface routes shielded intents and vault strategies across any venue. Delta hedge strategy (Black-Scholes) for principal-protected vaults. Privacy matcher executes real TradeCpi on-chain.
 
-Strategy logic battle-tested from production vaults (Yogi on Drift, Kodiak on Hyperliquid). Devnet + localnet.
-
 ## Demo video
 
 https://
@@ -75,9 +71,9 @@ Japan
 
 ## Is there anything else judges should know? (500 char)
 
-This isn't our first vault. Yogi runs live on Drift mainnet. Kodiak runs live on Hyperliquid mainnet. We built 5 custom Percolator matchers and maintain 29 @fabrknt/* infrastructure packages.
+This isn't our first vault. Yogi runs live on Drift. Kodiak runs live on Hyperliquid. We built 5 custom Percolator matchers and maintain 29 @fabrknt/* infrastructure packages.
 
-The shielded intent angle is genuinely novel — cross-venue perp routing with privacy doesn't exist anywhere. The privacy matcher is deployed and TradeCpi executes on-chain (verified on localnet). The delta hedge strategy (Black-Scholes option replication via perps) is the first on Solana since Friktion — enabled by Jupiter Perps maturity.
+The shielded intent angle is genuinely novel, cross-venue perp routing with privacy doesn't exist anywhere. The privacy matcher is deployed and TradeCpi executes on-chain. The delta hedge strategy (Black-Scholes option replication via perps) is the first on Solana since Friktion — enabled by Jupiter Perps maturity.
 
 ## How do you know people need this? (1000 char)
 
@@ -85,11 +81,11 @@ We know because we needed it ourselves. Running Yogi on Drift and Kodiak on Hype
 
 The April 2026 Drift exploit proved single-venue dependency is existential risk. Multi-venue routing isn't a nice-to-have; it's survival.
 
-Market signal for intents: CoW Protocol (Ethereum spot) processes $2B/month through intent-based routing. UniswapX uses intents for MEV protection. Neither exists for perps. The perp market is 6-8x larger than spot — $7 trillion/month. Cross-venue perp routing with privacy is an unaddressed market.
+CoW Protocol (Ethereum spot) processes $2B/month through intent-based routing. UniswapX uses intents for MEV protection. Neither exists for perps. The perp market is 6-8x larger than spot — $7 trillion/month. Cross-venue perp routing with privacy is an unaddressed market.
 
 Market signal for structured products: Friktion hit $300M TVL before shutting down — demand for on-chain structured products is proven. They failed because options infrastructure was broken. Jupiter Perps now provides the execution quality needed for delta hedging.
 
-Liminal manages $30M on Hyperliquid with simple funding rate vaults. Syntx routes across venues AND adds structured products. Bigger market, better architecture.
+Syntx routes across venues AND adds structured products. Bigger market, better architecture.
 
 ## How far along are you? (1000 char)
 
@@ -97,7 +93,7 @@ Full stack working end-to-end on devnet and localnet:
 
 On-chain programs:
 - Syntx vault: 18 instructions (deposit/withdraw standalone + Percolator modes), 32+ tests
-- Percolator risk engine: synced and rebuilt (84 compile errors fixed)
+- Percolator risk engine: synced and rebuilt
 - Privacy matcher: deployed, real TradeCpi executed on localnet
 
 Keeper strategies:
@@ -112,7 +108,7 @@ Frontend (Trade | Earn | Build):
 - Earn: tabbed vaults (Principal Protected SOL + Funding Rate), deposit/withdraw
 - Build: interactive strategy configurator (pick strategy × venues × params)
 
-No external users — pre-mainnet. Strategy logic battle-tested: Yogi (Drift mainnet, $500 live) and Kodiak (Hyperliquid mainnet).
+No external users — pre-mainnet. Strategy logic battle-tested: Drift and Hyperliquid mainnet.
 
 Pre-mainnet blockers: security audit (~$50-100K), multisig, legal entity.
 
@@ -122,11 +118,11 @@ Intent-based trading (CoW Protocol, UniswapX): Spot only. No perps. No cross-ven
 
 Venue-specific vaults (Drift Vaults, Jupiter LP): Locked to one DEX. When that DEX has downtime or exploit, vaults are stuck. Strategy managers rebuild infrastructure per venue.
 
-Yield vaults (Liminal $30M, Harmonix $6M on Hyperliquid): Simple funding rate strategies, no composability, no structured products. Other protocols can't CPI into their vaults.
+Yield vaults (Liminal, Harmonix on Hyperliquid): Simple funding rate strategies, no composability, no structured products. Other protocols can't CPI into their vaults.
 
-Structured product protocols (Friktion — dead, Ribbon — declining): Sold covered calls using options. Failed because on-chain options infrastructure was broken. Syntx replicates option payoffs via delta hedging on perps — enabled by Jupiter Perps maturity.
+Structured product protocols (Friktion — dead, Ribbon — declining): Sold covered calls using options. Failed because on-chain options infrastructure was broken. Syntx replicates option payoffs via delta hedging on perps.
 
-Everyone treats the vault and the venue as one product. Syntx separates execution (which DEX) from management (deposits, shares, risk). The VenueAdapter pattern is the key — same interface routes shielded intents AND vault strategies. Privacy on top is the moat no one else has.
+Everyone treats the vault and the venue as one product. Syntx separates execution (which DEX) from management (deposits, shares, risk). The VenueAdapter pattern is the key — same interface routes shielded intents AND vault strategies.
 
 ## How do you make money? (500 char)
 
