@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program;
+use anchor_lang::solana_program::program_option::COption;
 use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount, Transfer};
 
 declare_id!("53r6bg7JBFqf5Jfs7fe4kHDtwXwUgDWoLarYrsWcoF1V");
@@ -1037,6 +1038,11 @@ pub struct InitVault<'info> {
     pub collateral_mint: Box<Account<'info, Mint>>,
 
     /// Share mint — must be pre-created with vault PDA as mint authority
+    #[account(
+        constraint = share_mint.supply == 0 @ SyntxError::InvalidShareMint,
+        constraint = share_mint.mint_authority == COption::Some(vault_state.key()) @ SyntxError::InvalidShareMint,
+        constraint = share_mint.freeze_authority.is_none() @ SyntxError::InvalidShareMint,
+    )]
     pub share_mint: Box<Account<'info, Mint>>,
 
     /// Percolator slab (just recorded, not mutated here)
@@ -1377,6 +1383,11 @@ pub struct InitVaultStandalone<'info> {
     pub collateral_mint: Box<Account<'info, Mint>>,
 
     /// Share mint — must be pre-created with vault PDA as mint authority
+    #[account(
+        constraint = share_mint.supply == 0 @ SyntxError::InvalidShareMint,
+        constraint = share_mint.mint_authority == COption::Some(vault_state.key()) @ SyntxError::InvalidShareMint,
+        constraint = share_mint.freeze_authority.is_none() @ SyntxError::InvalidShareMint,
+    )]
     pub share_mint: Box<Account<'info, Mint>>,
 
     pub system_program: Program<'info, System>,
@@ -1549,4 +1560,6 @@ pub enum SyntxError {
     BelowMinimumProtection,
     #[msg("Instruction requires standalone vault")]
     NotStandalone,
+    #[msg("Share mint must have zero supply, the vault PDA as mint authority, and no freeze authority")]
+    InvalidShareMint,
 }
