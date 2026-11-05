@@ -26,6 +26,12 @@ VenueAdapter interface — implement 6 methods to add any DEX. The strategy and 
 ### Vault fees: known limitation
 `collect_fees` charges the **management fee only**. The performance fee (`performance_fee_bps`) is stored but **not charged**: it needs the vault's trading gains, which sit in the Percolator slab, and the program cannot read them reliably yet (the slab layout is not a Rust dependency of this repo, the slab `pnl` field is realized PnL only, and `percolator_program` is chosen by the manager at init). The fee base is computed on-chain from `total_deposits` (capped by the vault's own collateral balance for standalone vaults); the manager cannot pass an equity value. Charging a performance fee needs a pinned Percolator program and a versioned slab layout first.
 
+### Upgrading an existing deployment
+`VaultState` keeps its layout, so existing vaults stay readable. For clients and existing vaults:
+- `collect_fees` takes no argument and needs the vault's collateral token account after the manager share account (`createCollectFeesIx({ manager, vaultPda, shareMint, managerShares, vaultCollateral })`). Rebuild keepers and scripts that called it with an equity value.
+- `high_water_mark` is now a per-share price (1e6 fixed point). Vaults created by an earlier build hold a value in the old unit; it is informational only while the performance fee is not charged.
+- `init_vault` / `init_vault_standalone` require the share mint to have supply 0, the vault PDA as mint authority and no freeze authority.
+
 ## Architecture
 
 ```

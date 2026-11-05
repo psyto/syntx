@@ -353,6 +353,8 @@ share_price = vault_equity / total_shares
 vault_equity = capital + realized_pnl + unrealized_pnl
 ```
 
+On-chain today, `get_share_price` and withdrawals use `total_deposits / total_shares` (1e6 fixed point): trading gains in the Percolator slab are not yet read by the program.
+
 ### Example
 
 ```
@@ -376,8 +378,8 @@ Day 4: Alice withdraws all 100 shares
 
 ### Fees
 
-- **Performance fee (20%)** — taken on profits above the high-water mark
-- **Management fee (2% annual)** — taken on AUM, accrued per-second
+- **Performance fee (20%)** — set per vault (`performance_fee_bps`, up to 50%) but **not charged on-chain yet**: it needs trading gains from the Percolator slab, which the program cannot read reliably yet
+- **Management fee (2% annual)** — taken on the on-chain `total_deposits` (capped by the vault's collateral balance for standalone vaults), accrued per-second
 - Fees are collected by minting additional shares to the manager (dilutive)
 
 ---
@@ -393,7 +395,7 @@ Day 4: Alice withdraws all 100 shares
 | Excessive drawdown | **Circuit breaker** — auto-rejects trades when equity drops beyond configured limit from peak |
 | Malicious CPI callers | **CPI whitelist** — vault manager restricts which programs can call cpi_trade |
 | Oversized CPI trades | **Configurable size limit** — per-vault max trade size for external callers |
-| Bad trades | Performance fee aligns manager incentives with depositors |
+| Bad trades | Circuit breaker floor (the performance fee is not charged on-chain yet) |
 | Oracle manipulation | Percolator has oracle confidence checks and price circuit breakers |
 | Liquidation cascade | Percolator's A/K ADL (auto-deleverage) is deterministic and fair |
 

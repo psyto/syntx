@@ -29,7 +29,7 @@ If the manager key is compromised, the attacker can:
 2. `propose_manager` — propose transfer to attacker's address (**but 48h delay gives time to detect and cancel**)
 3. `set_circuit_breaker` — ~~disable all protections~~ **cannot reduce below `min_drawdown_bps` floor**
 4. `set_paused(false)` — unpause if someone detects and pauses
-5. `collect_fees` — mint excess fee shares with inflated equity input
+5. `collect_fees` — collect the management fee (the fee base is read on-chain; no equity input)
 
 **Remaining gap:** Squads multisig not yet implemented. Single key + timelock is better than single key alone, but multisig is the full solution. Planned post-audit.
 

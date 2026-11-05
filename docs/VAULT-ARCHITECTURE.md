@@ -2,7 +2,7 @@
 
 ## Program Overview
 
-The Syntx vault program (`programs/syntx-vault/src/lib.rs`) is an Anchor-based Solana program that provides a composable exchange-agnostic vault layer on Solana. It has 15 instructions and one state account. Vaults route trades across execution venues (Percolator, Phoenix, Jupiter Perps) through a VenueAdapter interface in the off-chain keeper.
+The Syntx vault program (`programs/syntx-vault/src/lib.rs`) is an Anchor-based Solana program that provides a composable exchange-agnostic vault layer on Solana. It has 18 instructions and one state account. Vaults route trades across execution venues (Percolator, Phoenix, Jupiter Perps) through a VenueAdapter interface in the off-chain keeper.
 
 ## State: VaultState
 
@@ -25,7 +25,7 @@ pub struct VaultState {
     // Fee structure
     pub performance_fee_bps: u16,
     pub management_fee_bps: u16,
-    pub high_water_mark: u64,
+    pub high_water_mark: u64,        // share price, 1e6 fixed point
     pub last_fee_collection: i64,
 
     // Safety
@@ -54,7 +54,7 @@ pub struct VaultState {
 
 ### Core Vault
 
-**init_vault** — Creates the VaultState PDA. Sets `min_drawdown_bps` — the immutable circuit breaker floor that can never be reduced.
+**init_vault** — Creates the VaultState PDA. Sets `min_drawdown_bps` — the immutable circuit breaker floor that can never be reduced. The share mint must be created beforehand with supply 0, the vault PDA as mint authority and no freeze authority (`InvalidShareMint` otherwise); `init_vault_standalone` checks the same.
 
 **register_on_percolator** — CPI to Percolator InitUser. The vault PDA becomes the owner of a trading account.
 
@@ -70,7 +70,7 @@ pub struct VaultState {
 
 **manager_crank** — CPI to Percolator KeeperCrank (funding settlement).
 
-**collect_fees** — Performance fee (% of profits above HWM) + management fee (% of AUM, pro-rated). Fees paid via share dilution.
+**collect_fees** — Management fee (% of the fee base, pro-rated by time). Takes no amount argument: the fee base is `total_deposits`, capped by the vault's collateral token balance for standalone vaults (accounts: manager, vault state, share mint, manager share account, vault collateral account, token program). The performance fee is not charged: `performance_fee_bps` is stored but unused until trading gains in the Percolator slab can be read on-chain. `high_water_mark` is still updated as a per-share price. Fees are paid via share dilution.
 
 **propose_manager** — Propose manager transfer to a new address. Starts a 48-hour timelock.
 
