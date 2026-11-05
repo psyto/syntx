@@ -45,6 +45,8 @@ If the manager key is compromised, the attacker can:
 
 `collect_fees` takes no equity argument. The fee base is `total_deposits` (the amount withdrawals are priced against), capped by the vault's own collateral token balance for standalone vaults. The high-water mark is kept as a per-share price (1e6 fixed point), so deposits are not counted as profit. Unrealized PnL in the Percolator slab is not counted, since holders cannot redeem it either.
 
+The performance fee is not charged at all (management fee only). Trading gains live in the Percolator slab, which cannot be read reliably on-chain yet: the slab layout is not a Rust dependency (only TS offset copies in keeper/ and app/), the slab `pnl` field is realized PnL only (unrealized needs the position basis, ADL coefficients and an oracle price), and `percolator_program` is chosen by the manager at init. A manager-supplied equity value is not accepted.
+
 ## What Syntx Gets Right (vs Drift)
 
 ### Vault PDA pattern eliminates direct fund extraction
@@ -95,7 +97,7 @@ Replace single EOA manager with a Squads multisig:
 
 ### Priority 4: On-chain equity for `collect_fees` — DONE (capped)
 
-Equity is taken from on-chain state instead of caller input. Reading true equity (capital + PnL) from the Percolator slab remains future work; until then fees are based on the redeemable `total_deposits`.
+Equity is taken from on-chain state instead of caller input. Reading true equity (capital + PnL) from the Percolator slab remains future work (needs a pinned Percolator program id and a versioned slab layout); until then only the management fee is charged, on the redeemable `total_deposits`, and the performance fee is not charged.
 
 ### Priority 5: On-chain monitoring — PLANNED
 

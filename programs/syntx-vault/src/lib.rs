@@ -718,20 +718,31 @@ pub mod syntx_vault {
         Ok(())
     }
 
-    /// Collect performance + management fees. Fees are paid via share dilution
+    /// Collect the management fee. Fees are paid via share dilution
     /// (minting new shares to the manager).
     ///
     /// The fee base is computed on-chain, not supplied by the caller:
     /// equity = `total_deposits` (the amount withdrawals are priced against),
     /// and for standalone vaults it is further capped by the collateral the
-    /// vault's own token account actually holds. Value held outside the vault
-    /// (e.g. unrealized PnL inside the Percolator slab) is not counted, because
-    /// share holders cannot redeem it either.
+    /// vault's own token account actually holds.
     ///
-    /// Performance fee: % of the per-share gain above the high-water mark.
-    /// `high_water_mark` stores the share price in 1e6 fixed point (same unit
-    /// as `get_share_price`), so new deposits are never counted as profit.
-    /// Management fee: % of AUM, pro-rated by time elapsed.
+    /// Management fee: % of that base, pro-rated by time elapsed.
+    ///
+    /// LIMITATION: the performance fee is NOT charged. `performance_fee_bps`
+    /// is stored but unused here. A performance fee needs the vault's trading
+    /// gains, which live in the Percolator slab, and those cannot be read
+    /// reliably on-chain today:
+    /// - the slab layout is not a dependency of this crate (only TS copies of
+    ///   byte offsets exist in keeper/ and app/), so a Percolator upgrade
+    ///   could silently change what the offsets point at;
+    /// - the slab's `pnl` field is realized PnL only; unrealized PnL needs the
+    ///   position basis, ADL coefficients and an oracle price;
+    /// - `percolator_program` is chosen by the manager at init, so a slab owned
+    ///   by it is not an independent source for the manager's own fee.
+    /// `total_deposits` does not include trading gains, so no share-price gain
+    /// is visible here. A manager-supplied equity value is deliberately not
+    /// accepted. `high_water_mark` is still tracked (share price, 1e6 fixed
+    /// point) so a future verified performance fee starts from a known base.
     pub fn collect_fees(ctx: Context<CollectFees>) -> Result<()> {
         let vault = &ctx.accounts.vault_state;
         require!(vault.initialized, SyntxError::NotInitialized);
@@ -751,29 +762,8 @@ pub mod syntx_vault {
         let share_price_e6 = ((vault_equity as u128) * 1_000_000 / (vault.total_shares as u128)) as u64;
 
         // --- Performance fee ---
-        // Only charged on per-share gains above the high-water mark
-        if share_price_e6 > vault.high_water_mark && vault.high_water_mark > 0 {
-            let profit = ((share_price_e6 - vault.high_water_mark) as u128)
-                .checked_mul(vault.total_shares as u128)
-                .unwrap()
-                .checked_div(1_000_000)
-                .unwrap() as u64;
-            let perf_fee_value = (profit as u128)
-                .checked_mul(vault.performance_fee_bps as u128)
-                .unwrap()
-                .checked_div(10_000)
-                .unwrap() as u64;
-
-            if perf_fee_value > 0 && vault_equity > perf_fee_value {
-                // shares_for_fee = fee_value * total_shares / (equity - fee_value)
-                let perf_shares = (perf_fee_value as u128)
-                    .checked_mul(vault.total_shares as u128)
-                    .unwrap()
-                    .checked_div((vault_equity - perf_fee_value) as u128)
-                    .unwrap() as u64;
-                fee_shares = fee_shares.checked_add(perf_shares).unwrap();
-            }
-        }
+        // Not charged: trading gains in the Percolator slab cannot be verified
+        // on-chain (see the doc comment above).
 
         // --- Management fee ---
         // Annual fee pro-rated by seconds elapsed

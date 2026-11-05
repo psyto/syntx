@@ -177,8 +177,10 @@ export function createWithdrawIx(params: {
 }
 
 /**
- * Collect accumulated performance and management fees.
+ * Collect the accumulated management fee.
  * Mints new share tokens to the manager proportional to fees earned.
+ * The performance fee is not charged on-chain (Percolator trading gains
+ * cannot be verified yet; see collect_fees in the program).
  * Only callable by the vault manager.
  *
  * @param params.manager - Vault manager (signer)

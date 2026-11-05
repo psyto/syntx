@@ -23,6 +23,9 @@ Submit an encrypted trading intent. The solver decrypts, scores venues, splits t
 ### 3. Composable Vault Layer
 VenueAdapter interface — implement 6 methods to add any DEX. The strategy and routing code stays unchanged. Five adapters: Percolator, Jupiter Perps, Phoenix, Kamino, VenueRouter.
 
+### Vault fees: known limitation
+`collect_fees` charges the **management fee only**. The performance fee (`performance_fee_bps`) is stored but **not charged**: it needs the vault's trading gains, which sit in the Percolator slab, and the program cannot read them reliably yet (the slab layout is not a Rust dependency of this repo, the slab `pnl` field is realized PnL only, and `percolator_program` is chosen by the manager at init). The fee base is computed on-chain from `total_deposits` (capped by the vault's own collateral balance for standalone vaults); the manager cannot pass an equity value. Charging a performance fee needs a pinned Percolator program and a versioned slab layout first.
+
 ## Architecture
 
 ```

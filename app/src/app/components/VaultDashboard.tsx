@@ -511,7 +511,7 @@ export default function VaultDashboard({ vaultPda }: { vaultPda: string }) {
           <Row label="Manager" value={short(vault.manager)} href={vault.manager} />
           <Row label="Percolator Slab" value={short(vault.slab)} href={vault.slab} />
           <Row label="Account Index" value={String(vault.userIdx)} />
-          <Row label="Performance Fee" value={`${vault.perfFeeBps / 100}%`} />
+          <Row label="Performance Fee" value={`${vault.perfFeeBps / 100}% (not charged on-chain yet)`} />
           <Row label="Management Fee" value={`${vault.mgmtFeeBps / 100}%/yr`} />
           <Row label="Deposit Cap" value={vault.depositCap > 0n ? (Number(vault.depositCap) / 1_000_000).toLocaleString() : "Unlimited"} />
         </div>
