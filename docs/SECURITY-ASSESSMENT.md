@@ -41,9 +41,9 @@ If the manager key is compromised, the attacker can:
 
 `min_drawdown_bps` is set at vault creation and **cannot be reduced** — ever. The manager can call `set_circuit_breaker` to strengthen protections (raise the limit) but cannot weaken them below the floor. Depositors can verify this value on-chain before depositing.
 
-### Medium: `collect_fees` accepts off-chain equity input
+### ~~Medium~~ Implemented: `collect_fees` computes equity on-chain
 
-The `vault_equity` parameter is passed by the manager, not read from on-chain state. A compromised manager could pass an inflated equity to mint excess fee shares.
+`collect_fees` takes no equity argument. The fee base is `total_deposits` (the amount withdrawals are priced against), capped by the vault's own collateral token balance for standalone vaults. The high-water mark is kept as a per-share price (1e6 fixed point), so deposits are not counted as profit. Unrealized PnL in the Percolator slab is not counted, since holders cannot redeem it either.
 
 ## What Syntx Gets Right (vs Drift)
 
@@ -93,9 +93,9 @@ Replace single EOA manager with a Squads multisig:
 - 3-of-5 for admin actions
 - Squads + timelock = full protection
 
-### Priority 4: On-chain equity for `collect_fees` — PLANNED
+### Priority 4: On-chain equity for `collect_fees` — DONE (capped)
 
-Read equity from Percolator slab instead of accepting off-chain input.
+Equity is taken from on-chain state instead of caller input. Reading true equity (capital + PnL) from the Percolator slab remains future work; until then fees are based on the redeemable `total_deposits`.
 
 ### Priority 5: On-chain monitoring — PLANNED
 

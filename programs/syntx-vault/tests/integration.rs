@@ -446,10 +446,8 @@ fn encode_syntx_deposit(amount: u64) -> Vec<u8> {
     data
 }
 
-fn encode_syntx_collect_fees(vault_equity: u64) -> Vec<u8> {
-    let mut data = disc("collect_fees");
-    data.extend_from_slice(&vault_equity.to_le_bytes());
-    data
+fn encode_syntx_collect_fees() -> Vec<u8> {
+    disc("collect_fees")
 }
 
 fn encode_syntx_withdraw(shares_to_burn: u64) -> Vec<u8> {
@@ -1021,8 +1019,8 @@ fn test_collect_fees() {
         rent_epoch: 0,
     }).unwrap();
 
-    // Collect fees — simulate vault_equity = 110 USDC (10% profit)
-    let vault_equity: u64 = 110_000_000;
+    // Collect fees — equity is read on-chain (total_deposits = 100 USDC)
+    let vault_equity: u64 = deposit_amount;
     let ix = Instruction {
         program_id: env.syntx_id,
         accounts: vec![
@@ -1030,9 +1028,10 @@ fn test_collect_fees() {
             AccountMeta::new(vault_pda, false),        // vault_state
             AccountMeta::new(share_mint, false),       // share_mint
             AccountMeta::new(manager_shares, false),   // manager_shares
+            AccountMeta::new_readonly(vault_collateral, false), // vault_collateral
             AccountMeta::new_readonly(spl_token::ID, false), // token_program
         ],
-        data: encode_syntx_collect_fees(vault_equity),
+        data: encode_syntx_collect_fees(),
     };
     let tx = Transaction::new_signed_with_payer(
         &[ix], Some(&manager_pubkey), &[manager], env.svm.latest_blockhash(),
@@ -1058,7 +1057,10 @@ fn test_collect_fees() {
     assert_eq!(user_shares_state.amount, deposit_amount, "User shares unchanged");
 
     println!("=== Fee collection test passed ===");
-    println!("  Vault equity: {} (10% profit)", vault_equity);
+    // Management fee only: 2%/yr on 100 USDC for 30 days ~= 164_383 USDC units
+    assert!(mgr_shares_state.amount > 150_000 && mgr_shares_state.amount < 180_000,
+        "Fee shares should match a 30-day management fee on on-chain equity");
+    println!("  Vault equity: {} (on-chain)", vault_equity);
     println!("  Manager earned: {} fee shares", mgr_shares_state.amount);
     println!("  User retains: {} shares", user_shares_state.amount);
 }
@@ -1605,7 +1607,7 @@ fn test_update_manager_rejected_by_non_manager() {
 fn test_collect_fees_rejected_by_non_manager() {
     let mut env = TestEnv::new();
     env.init_percolator_market();
-    let (vault_pda, _, share_mint, _, _) = setup_vault_with_deposit(&mut env);
+    let (vault_pda, vault_collateral, share_mint, _, _) = setup_vault_with_deposit(&mut env);
 
     let attacker = Keypair::new();
     env.svm.airdrop(&attacker.pubkey(), 10_000_000_000).unwrap();
@@ -1624,9 +1626,10 @@ fn test_collect_fees_rejected_by_non_manager() {
             AccountMeta::new(vault_pda, false),
             AccountMeta::new(share_mint, false),
             AccountMeta::new(attacker_shares, false),
+            AccountMeta::new_readonly(vault_collateral, false),
             AccountMeta::new_readonly(spl_token::ID, false),
         ],
-        data: encode_syntx_collect_fees(100_000_000),
+        data: encode_syntx_collect_fees(),
     };
     let tx = Transaction::new_signed_with_payer(
         &[ix], Some(&attacker.pubkey()), &[&attacker], env.svm.latest_blockhash(),
@@ -2299,4 +2302,165 @@ fn test_circuit_breaker_state_persisted() {
     assert_eq!(max_cpi, 2_000_000, "max_cpi_trade_size should be 2_000_000");
 
     println!("test_circuit_breaker_state_persisted passed (drawdown=500, peak_equity={}, max_cpi={})", peak_eq, max_cpi);
+}
+
+// =============================================================================
+// Standalone vault: collect_fees uses on-chain equity
+// =============================================================================
+
+fn encode_syntx_init_vault_standalone(
+    performance_fee_bps: u16,
+    management_fee_bps: u16,
+    deposit_cap: u64,
+    min_drawdown_bps: u16,
+) -> Vec<u8> {
+    let mut data = disc("init_vault_standalone");
+    data.extend_from_slice(&performance_fee_bps.to_le_bytes());
+    data.extend_from_slice(&management_fee_bps.to_le_bytes());
+    data.extend_from_slice(&deposit_cap.to_le_bytes());
+    data.extend_from_slice(&min_drawdown_bps.to_le_bytes());
+    data
+}
+
+fn encode_syntx_deposit_standalone(amount: u64) -> Vec<u8> {
+    let mut data = disc("deposit_standalone");
+    data.extend_from_slice(&amount.to_le_bytes());
+    data
+}
+
+fn token_amount(env: &TestEnv, key: &Pubkey) -> u64 {
+    TokenAccount::unpack(&env.svm.get_account(key).unwrap().data).unwrap().amount
+}
+
+#[test]
+fn test_collect_fees_standalone_uses_on_chain_equity() {
+    let mut env = TestEnv::new();
+    let manager = env.payer.insecure_clone();
+    let manager_pubkey = manager.pubkey();
+    let (vault_pda, _) = env.vault_pda(&manager_pubkey);
+
+    let share_mint = Pubkey::new_unique();
+    env.svm.set_account(share_mint, Account {
+        lamports: 1_000_000,
+        data: make_mint_data_with_authority(&vault_pda),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager_pubkey, true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new_readonly(env.collateral_mint, false),
+            AccountMeta::new_readonly(share_mint, false),
+            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+        ],
+        data: encode_syntx_init_vault_standalone(2000, 200, 0, 500),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&manager_pubkey), &[&manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("init_vault_standalone failed");
+
+    let vault_collateral = Pubkey::new_unique();
+    env.svm.set_account(vault_collateral, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &vault_pda, 0),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+
+    let user = Keypair::new();
+    env.svm.airdrop(&user.pubkey(), 10_000_000_000).unwrap();
+    let deposit_amount: u64 = 100_000_000;
+    let user_collateral = Pubkey::new_unique();
+    env.svm.set_account(user_collateral, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &user.pubkey(), deposit_amount),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+    let user_shares = Pubkey::new_unique();
+    env.svm.set_account(user_shares, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&share_mint, &user.pubkey(), 0),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+
+    let ix = Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(user.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new(user_collateral, false),
+            AccountMeta::new(user_shares, false),
+            AccountMeta::new(vault_collateral, false),
+            AccountMeta::new(share_mint, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+        ],
+        data: encode_syntx_deposit_standalone(deposit_amount),
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix], Some(&user.pubkey()), &[&user], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("deposit_standalone failed");
+
+    // 30 days later the vault token account holds only half of total_deposits
+    env.svm.set_sysvar(&Clock {
+        slot: 200,
+        unix_timestamp: 100 + (30 * 24 * 3600),
+        ..Clock::default()
+    });
+    env.svm.set_account(vault_collateral, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &vault_pda, deposit_amount / 2),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+
+    let manager_shares = Pubkey::new_unique();
+    env.svm.set_account(manager_shares, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&share_mint, &manager_pubkey, 0),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+
+    let collect_ix = |collateral: Pubkey| Instruction {
+        program_id: env.syntx_id,
+        accounts: vec![
+            AccountMeta::new(manager_pubkey, true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new(share_mint, false),
+            AccountMeta::new(manager_shares, false),
+            AccountMeta::new_readonly(collateral, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+        ],
+        data: encode_syntx_collect_fees(),
+    };
+
+    // A collateral account not owned by the vault is rejected
+    let foreign = Pubkey::new_unique();
+    env.svm.set_account(foreign, Account {
+        lamports: 1_000_000,
+        data: make_token_account_data(&env.collateral_mint, &manager_pubkey, 1_000_000_000),
+        owner: spl_token::ID, executable: false, rent_epoch: 0,
+    }).unwrap();
+    let tx = Transaction::new_signed_with_payer(
+        &[collect_ix(foreign)], Some(&manager_pubkey), &[&manager], env.svm.latest_blockhash(),
+    );
+    assert!(env.svm.send_transaction(tx).is_err(), "foreign collateral account must be rejected");
+
+    let tx = Transaction::new_signed_with_payer(
+        &[collect_ix(vault_collateral)], Some(&manager_pubkey), &[&manager], env.svm.latest_blockhash(),
+    );
+    env.svm.send_transaction(tx).expect("collect_fees failed");
+
+    // 2%/yr on the verified 50 USDC for 30 days ~= 82_191 value -> ~164k shares
+    // (shares are priced at total_deposits / total_shares = 1.0, minus the fee)
+    let fee_shares = token_amount(&env, &manager_shares);
+    let expected_value: u64 = 50_000_000 * 200 * 30 / 365 / 10_000;
+    let expected_shares = expected_value as u128 * deposit_amount as u128
+        / (50_000_000 - expected_value) as u128;
+    assert!(
+        (fee_shares as i128 - expected_shares as i128).abs() < 1_000,
+        "fee shares {} should be based on verified equity (~{})", fee_shares, expected_shares,
+    );
+    println!("standalone fee shares: {} (expected ~{})", fee_shares, expected_shares);
 }

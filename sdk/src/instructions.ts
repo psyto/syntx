@@ -185,21 +185,23 @@ export function createWithdrawIx(params: {
  * @param params.vaultPda - Vault PDA address
  * @param params.shareMint - Share token mint address
  * @param params.managerShares - Manager's share token account (receives fee shares)
- * @param params.vaultEquity - Current vault equity (used for HWM calculation)
+ * @param params.vaultCollateral - Vault PDA's collateral token account
+ *
+ * Vault equity is computed on-chain (total_deposits, capped by the vault's
+ * collateral balance for standalone vaults); it is not passed by the caller.
  */
 export function createCollectFeesIx(params: {
   manager: PublicKey;
   vaultPda: PublicKey;
   shareMint: PublicKey;
   managerShares: PublicKey;
-  vaultEquity: bigint;
+  vaultCollateral: PublicKey;
   programId?: PublicKey;
 }): TransactionInstruction {
   const pid = params.programId ?? SYNTX_PROGRAM_ID;
 
-  const data = Buffer.alloc(8 + 8);
+  const data = Buffer.alloc(8);
   disc("collect_fees").copy(data, 0);
-  data.writeBigUInt64LE(params.vaultEquity, 8);
 
   return new TransactionInstruction({
     programId: pid,
@@ -208,6 +210,7 @@ export function createCollectFeesIx(params: {
       { pubkey: params.vaultPda, isSigner: false, isWritable: true },
       { pubkey: params.shareMint, isSigner: false, isWritable: true },
       { pubkey: params.managerShares, isSigner: false, isWritable: true },
+      { pubkey: params.vaultCollateral, isSigner: false, isWritable: false },
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
     data,

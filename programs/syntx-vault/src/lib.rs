@@ -721,21 +721,43 @@ pub mod syntx_vault {
     /// Collect performance + management fees. Fees are paid via share dilution
     /// (minting new shares to the manager).
     ///
-    /// Performance fee: % of profits above high-water mark.
+    /// The fee base is computed on-chain, not supplied by the caller:
+    /// equity = `total_deposits` (the amount withdrawals are priced against),
+    /// and for standalone vaults it is further capped by the collateral the
+    /// vault's own token account actually holds. Value held outside the vault
+    /// (e.g. unrealized PnL inside the Percolator slab) is not counted, because
+    /// share holders cannot redeem it either.
+    ///
+    /// Performance fee: % of the per-share gain above the high-water mark.
+    /// `high_water_mark` stores the share price in 1e6 fixed point (same unit
+    /// as `get_share_price`), so new deposits are never counted as profit.
     /// Management fee: % of AUM, pro-rated by time elapsed.
-    pub fn collect_fees(ctx: Context<CollectFees>, vault_equity: u64) -> Result<()> {
+    pub fn collect_fees(ctx: Context<CollectFees>) -> Result<()> {
         let vault = &ctx.accounts.vault_state;
         require!(vault.initialized, SyntxError::NotInitialized);
         require!(vault.total_shares > 0, SyntxError::ZeroShares);
+
+        let vault_equity = if vault.standalone {
+            vault.total_deposits.min(ctx.accounts.vault_collateral.amount)
+        } else {
+            vault.total_deposits
+        };
         require!(vault_equity > 0, SyntxError::ZeroAmount);
 
         let now = Clock::get()?.unix_timestamp;
         let mut fee_shares: u64 = 0;
 
+        // Share price before fees, 1e6 fixed point
+        let share_price_e6 = ((vault_equity as u128) * 1_000_000 / (vault.total_shares as u128)) as u64;
+
         // --- Performance fee ---
-        // Only charged on profits above the high-water mark
-        if vault_equity > vault.high_water_mark && vault.high_water_mark > 0 {
-            let profit = vault_equity - vault.high_water_mark;
+        // Only charged on per-share gains above the high-water mark
+        if share_price_e6 > vault.high_water_mark && vault.high_water_mark > 0 {
+            let profit = ((share_price_e6 - vault.high_water_mark) as u128)
+                .checked_mul(vault.total_shares as u128)
+                .unwrap()
+                .checked_div(1_000_000)
+                .unwrap() as u64;
             let perf_fee_value = (profit as u128)
                 .checked_mul(vault.performance_fee_bps as u128)
                 .unwrap()
@@ -778,6 +800,10 @@ pub mod syntx_vault {
         }
 
         if fee_shares == 0 {
+            let vault = &mut ctx.accounts.vault_state;
+            if share_price_e6 > vault.high_water_mark {
+                vault.high_water_mark = share_price_e6;
+            }
             msg!("No fees to collect");
             return Ok(());
         }
@@ -803,15 +829,16 @@ pub mod syntx_vault {
             fee_shares,
         )?;
 
-        // Update state
+        // Update state. HWM is the pre-fee share price, so the same gain is
+        // never charged twice.
         let vault = &mut ctx.accounts.vault_state;
         vault.total_shares = vault.total_shares.checked_add(fee_shares).unwrap();
-        if vault_equity > vault.high_water_mark {
-            vault.high_water_mark = vault_equity;
+        if share_price_e6 > vault.high_water_mark {
+            vault.high_water_mark = share_price_e6;
         }
         vault.last_fee_collection = now;
 
-        msg!("Collected fees: {} shares minted to manager", fee_shares);
+        msg!("Collected fees: {} shares minted to manager (equity {})", fee_shares, vault_equity);
         Ok(())
     }
 
@@ -1276,6 +1303,14 @@ pub struct CollectFees<'info> {
     /// Manager's share token account (fee destination)
     #[account(mut, token::mint = vault_state.share_mint)]
     pub manager_shares: Box<Account<'info, TokenAccount>>,
+
+    /// Vault PDA's collateral token account. For standalone vaults its balance
+    /// caps the fee base; donations cannot raise it above `total_deposits`.
+    #[account(
+        token::mint = vault_state.collateral_mint,
+        token::authority = vault_state,
+    )]
+    pub vault_collateral: Box<Account<'info, TokenAccount>>,
 
     pub token_program: Program<'info, Token>,
 }
